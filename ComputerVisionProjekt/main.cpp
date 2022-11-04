@@ -17,7 +17,10 @@ cv::Mat bgSub(cv::Mat img1, cv::Mat img2) {
 
 int main() {
 
-	for (int pos = 300; pos <= 1200; pos++) {
+	cv::Ptr<BackgroundSubtractor> mog2BS = createBackgroundSubtractorMOG2();
+	cv::Ptr<BackgroundSubtractor> knnBS = createBackgroundSubtractorKNN();
+
+	for (int pos = 300; pos <= 1200; pos += 10) { // Stepping 10 Frames at a time might conflict with Background Subtraction
 		std::ostringstream in_img_name, gt_img_name;
 		char pos_str[7]; 
 		sprintf_s(pos_str, "%0.6d", pos);
@@ -37,12 +40,15 @@ int main() {
 			std::cout << "Could not read the image: " << gt_img_name.str() << std::endl;
 			return 1;
 		}
-		
-		
-		//cv::subtract(in_img, gt_img, gt_img);
-		//cv::subtract(in_img, gt_img, in_img);
 
-		imshow("BG Substraction",  bgSub(in_img, gt_img));
+		cv::Mat mog2Mask, knnMask;
+		mog2BS->apply(in_img, mog2Mask);
+		knnBS->apply(in_img, knnMask);
+
+		imshow("Own Substraction",  bgSub(in_img, gt_img));
+		//imshow("Double Substraction",  in_img - (in_img - gt_img));
+		imshow("Mog2 Background Substraction",  mog2Mask);
+		imshow("KNN Background Substraction",  knnMask);
 
 		int wait = cv::waitKey(0);
 		if (wait == 27) break; // ESC Key
