@@ -3,9 +3,19 @@
 
 using namespace cv;
 
-int main() {
+cv::Mat bgSub(cv::Mat img1, cv::Mat img2) {
+	cv::Mat solution;
+	solution.create(img1.rows, img1.cols, CV_8UC3);
+	for (int row = 0; row < solution.rows; row++) {
+		for (int col = 0; col < solution.cols; col++) {
+			cv::Vec3b whitePixel = { 255, 255, 255 };
+			solution.at<cv::Vec3b>(row, col) = img1.at<cv::Vec3b>(row, col) - (whitePixel - img2.at<cv::Vec3b>(row, col));
+		}
+	}
+	return solution;
+}
 
-	// load image
+int main() {
 
 	for (int pos = 300; pos <= 1200; pos++) {
 		std::ostringstream in_img_name, gt_img_name;
@@ -29,14 +39,15 @@ int main() {
 		}
 		
 		
-		cv::subtract(in_img, gt_img, gt_img);
-		cv::subtract(in_img, gt_img, in_img);
-		imshow(pos_str, in_img);
+		//cv::subtract(in_img, gt_img, gt_img);
+		//cv::subtract(in_img, gt_img, in_img);
+
+		imshow("BG Substraction",  bgSub(in_img, gt_img));
 
 		int wait = cv::waitKey(0);
+		if (wait == 27) break; // ESC Key
+
 		cv::destroyAllWindows();
 	}
-	
-
 	return 0;
 }
