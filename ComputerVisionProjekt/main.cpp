@@ -1,5 +1,6 @@
 #include <opencv2\opencv.hpp>
 #include <iostream>
+#include <cmath>
 
 using namespace cv;
 
@@ -44,41 +45,30 @@ public:cv::Mat apply(int pos) {
 		}
 	}
 	
-	std::ostringstream past_img_name;
+	std::ostringstream new_img_name;
 	char pos_str[7];
-	sprintf_s(pos_str, "%0.6d", pos - 10);
-	past_img_name << "data\\data_m2\\1\\input\\in" << pos_str << ".jpg";
-	cv::Vec3b img1 = { 0,0,0 };
+	sprintf_s(pos_str, "%0.6d", pos);
+	new_img_name << "data\\data_m2\\1\\input\\in" << pos_str << ".jpg";
+	cv::Mat imgNew = cv::imread(new_img_name.str(), cv::IMREAD_GRAYSCALE);
 
-	cv::Mat testImg(cv::Size(720, 576), CV_8UC3);
+	imshow("tei", imgNew);
 
-	cv::Mat grayimg1;
-	cv::cvtColor(testImg, grayimg1, cv::COLOR_BGR2GRAY);
+	for (int row = 0; row < imgNew.rows; row++) {
+		for (int col = 0; col < imgNew.cols; col++) {
 
+			imgNew.at<uchar>(row, col) = abs(imgNew.at<uchar>(row, col) - bgdImg.at<uchar>(row, col));
 
-	for (int imageRow = pos - 80; imageRow < pos; imageRow++) {
-		std::ostringstream now_img_name;
-		char pos_str[7];
-		sprintf_s(pos_str, "%0.6d", imageRow);
-		now_img_name << "data\\data_m2\\1\\input\\in" << pos_str << ".jpg";
-
-		cv::Mat img2 = cv::imread(now_img_name.str(), cv::IMREAD_COLOR);
-
-		cv::Mat grayimg2;
-		cv::cvtColor(img2, grayimg2, cv::COLOR_BGR2GRAY);
-
-		cv::Mat temp = grayimg1;
-
-
-		for (int row = 0; row < grayimg1.rows; row++) {
-			for (int col = 0; col < grayimg1.cols; col++) {
-
-				grayimg1.at<uchar>(row, col) = (temp.at<uchar>(row, col) + grayimg2.at<uchar>(row, col)) / 2;
-
+			if (imgNew.at<uchar>(row, col) > 45) {
+				imgNew.at<uchar>(row, col) = 255;
 			}
+			else {
+				imgNew.at<uchar>(row, col) = 0;
+			}
+
 		}
 	}
 
+	imshow("testi", bgdImg);
 
 	/*cv::Mat graymat;
 	cv::cvtColor(solution, graymat, cv::COLOR_BGR2GRAY);
@@ -104,7 +94,7 @@ public:cv::Mat apply(int pos) {
 		}
 	}*/
 
-	return bgdImg;
+	return imgNew;
 }
 };
 
