@@ -173,11 +173,18 @@ int main() {
 	cv::Ptr<BackgroundSubtractor> knnBS = createBackgroundSubtractorKNN();
 
 	cv::Mat mog2Mask, knnMask;
+	double fscore_own = 0,
+		fscore_knn = 0,
+		fscore_mog2 = 0;
+
+	const int numberImages = 1200,
+		startingPos = 300;
+	int iterations = 0;
 
 	bgSub image(50);
 	image.apply();
 
-	for (int pos = 300; pos <= 1200; pos += 1) {
+	for (int pos = startingPos; pos <= numberImages; pos += 1) {
 		// Loading Images
 		std::ostringstream in_img_name, gt_img_name;
 		char pos_str[7];
@@ -202,13 +209,18 @@ int main() {
 		// Appling BG Subtraction and evalutation
 		mog2BS->apply(in_img, mog2Mask);
 		mog2Eval.evaluate(mog2Mask, gt_img);
+		if (mog2Eval.getFScore() >= 0)
+			fscore_mog2 += mog2Eval.getFScore();
 
 		knnBS->apply(in_img, knnMask);
 		knnEval.evaluate(knnMask, gt_img);
+		fscore_knn += knnEval.getFScore();
 
 		in_img = image.substraction(in_img);
 		ownEval.evaluate(in_img, gt_img);
+		fscore_own += ownEval.getFScore();
 
+		iterations++; 
 		// putting text on image and show it
 		//MOG 2
 		putText(mog2Mask, "FScore: " + std::to_string(mog2Eval.getFScore()), Point(5, 30), FONT_HERSHEY_DUPLEX, 0.8, { 100, 100, 100 });
@@ -223,13 +235,18 @@ int main() {
 		imshow("Own Background Substraction", in_img);
 		
 		// do 10 steps before waiting again 
-		if (pos % 10 == 0) {
+		if (pos % 100 == 0) {
 			int wait = cv::waitKey(0);
 			if (wait == 27) {
 				break; // ESC Key
 			}
 		}
 	}
+
+	std::cout << "F Scores: " << std::endl;
+	std::cout << "Mog2 : " << fscore_mog2/ iterations << std::endl;
+	std::cout << "KNN  : " << fscore_knn / iterations << std::endl;
+	std::cout << "Own  : " << fscore_own / iterations << std::endl;
 	cv::destroyAllWindows();
 	return 0;
 }
