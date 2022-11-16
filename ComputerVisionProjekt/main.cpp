@@ -195,7 +195,7 @@ int main() {
 		// OWN
 		putText(in_img, "FScore: " + std::to_string(ownEval.getFScore()), Point(5, 30), FONT_HERSHEY_DUPLEX, 0.8, { 100, 100, 100 });
 		imshow("Own Background Substraction", in_img);
-		_sleep(50);
+		
 		if (pos % 10 == 0) {
 			int wait = cv::waitKey(0);
 			if (wait == 27) {
