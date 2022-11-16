@@ -198,7 +198,6 @@ int main() {
 		
 		if (pos % 10 == 0) {
 			int wait = cv::waitKey(0);
-			std::cout << "KEY: " << wait << std::endl;
 			if (wait == 27) {
 				break; // ESC Key
 			}
