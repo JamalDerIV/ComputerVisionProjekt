@@ -154,7 +154,7 @@ int main() {
 	bgSub image(50);
 	image.apply();
 
-	for (int pos = 1; pos <= 1200; pos += 1) { // Stepping 10 Frames at a time might conflict with Background Subtraction
+	for (int pos = 300; pos <= 1200; pos += 1) {
 		std::ostringstream in_img_name, gt_img_name;
 		char pos_str[7];
 		sprintf_s(pos_str, "%0.6d", pos);
@@ -198,11 +198,12 @@ int main() {
 		
 		if (pos % 10 == 0) {
 			int wait = cv::waitKey(0);
+			std::cout << "KEY: " << wait << std::endl;
 			if (wait == 27) {
 				break; // ESC Key
-				cv::destroyAllWindows();
 			}
 		}
 	}
+	cv::destroyAllWindows();
 	return 0;
 }
