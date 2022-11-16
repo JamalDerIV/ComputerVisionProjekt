@@ -17,8 +17,7 @@ public:
 
 public:cv::Mat apply(int pos) {
 
-	//create a blank image
-	cv::Mat bgdImg(cv::Size(720, 576), CV_8UC1);
+	
 
 	//load all images into an array
 	for (int i = 1; i < imagesToLoad+1; i++) {
@@ -29,6 +28,9 @@ public:cv::Mat apply(int pos) {
 		img_name << "data\\data_m2\\1\\input\\in" << pos_str << ".jpg";
 		images[imagesToLoad-i] = cv::imread(img_name.str(), cv::IMREAD_GRAYSCALE);
 	}
+
+	//create a blank image
+	cv::Mat bgdImg(cv::Size(images[0].cols, images[0].rows), CV_8UC1);
 
 	//add the image grayscales and divide by images to load to get the average grayscale
 	for (int row = 0; row < images[0].rows; row++) {
