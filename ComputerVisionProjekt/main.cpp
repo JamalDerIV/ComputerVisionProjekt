@@ -160,7 +160,7 @@ int main() {
 	bgSub image(50);
 	image.apply();
 
-	for (int pos = 60; pos <= 1200; pos += 20) { // Stepping 10 Frames at a time might conflict with Background Subtraction
+	for (int pos = 1; pos <= 1200; pos += 1) { // Stepping 10 Frames at a time might conflict with Background Subtraction
 		std::ostringstream in_img_name, gt_img_name;
 		char pos_str[7];
 		sprintf_s(pos_str, "%0.6d", pos);
@@ -201,11 +201,14 @@ int main() {
 		// OWN
 		putText(in_img, "FScore: " + std::to_string(ownEval.getFScore()), Point(5, 30), FONT_HERSHEY_DUPLEX, 0.8, { 100, 100, 100 });
 		imshow("Own Background Substraction", in_img);
-
-		int wait = cv::waitKey(0);
-		if (wait == 27) break; // ESC Key
-
-		cv::destroyAllWindows();
+		_sleep(50);
+		if (pos % 10 == 0) {
+			int wait = cv::waitKey(0);
+			if (wait == 27) {
+				break; // ESC Key
+				cv::destroyAllWindows();
+			}
+		}
 	}
 	return 0;
 }
