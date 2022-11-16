@@ -16,9 +16,13 @@ public:
 		images = new cv::Mat [pos];
 	}
 
-public:void apply() {
+public:
+	/*
+	* creates an background image out of x images
+	*/
+	void apply() {
 
-	//load all images into an array
+	//load all images as grayscale into an array
 	for (int i = 1; i < imagesToLoad+1; i++) {
 		std::ostringstream img_name;
 		char pos_str[7];
@@ -28,10 +32,10 @@ public:void apply() {
 		images[imagesToLoad-i] = cv::imread(img_name.str(), cv::IMREAD_GRAYSCALE);
 	}
 
-	//creates a blank image
+	//declares backgroundImage as a blank image the size xy of one the images in the array
 	bgdImg = cv::Mat::zeros(cv::Size(images[0].cols, images[0].rows), CV_8UC1);
 
-	//add the image grayscales and divide by images to load to get the average grayscale
+	//add the grayscales of all images by position row col and divide by images to load to get the average grayscale
 	for (int row = 0; row < images[0].rows; row++) {
 		for (int col = 0; col < images[0].cols; col++) {
 
@@ -42,30 +46,38 @@ public:void apply() {
 			}
 
 			average /= imagesToLoad;
-			bgdImg.at<uchar>(row, col) = average;
+
+			// save the average grayscale from position row col into our backgroundImage
+			bgdImg.at<uchar>(row, col) = average; 
 		}
 	}
 }
-	  cv::Mat substraction(cv::Mat imgNew) {
 
-		  for (int row = 0; row < imgNew.rows; row++) {
-			  for (int col = 0; col < imgNew.cols; col++) {
+	/*
+	* subtracts the background from an image
+	*/
+	cv::Mat substraction(cv::Mat imgNew) {
 
-				  imgNew.at<uchar>(row, col) = abs(imgNew.at<uchar>(row, col) - bgdImg.at<uchar>(row, col));
+		for (int row = 0; row < imgNew.rows; row++) {
+			for (int col = 0; col < imgNew.cols; col++) {
 
-				  //paint everything white that has a grayscale over 45 and black everything else
-				  if (imgNew.at<uchar>(row, col) > 45) {
-					  imgNew.at<uchar>(row, col) = 255;
-				  }
-				  else {
-					  imgNew.at<uchar>(row, col) = 0;
-				  }
+				//substract the backround from our newly loaded image to only get the difference
+				imgNew.at<uchar>(row, col) = abs(imgNew.at<uchar>(row, col) - bgdImg.at<uchar>(row, col));
 
-			  }
-		  }
+				//paint everything white that has a grayscale over 45
+				if (imgNew.at<uchar>(row, col) > 45) {
+					imgNew.at<uchar>(row, col) = 255;
+				}
+				else {
+					//paint black everything under grayscale 46
+					imgNew.at<uchar>(row, col) = 0;
+				}
 
-		  return imgNew;
-	  }
+			}
+		}
+
+		return imgNew;
+	}
 };
 
 
