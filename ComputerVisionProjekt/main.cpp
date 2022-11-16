@@ -68,24 +68,32 @@ public:void apply() {
 	  }
 };
 
+
+/* Evaluation 
+*	used to calculate F-Sorce of a BG-Subtraction
+ */
 class Evaluation {
 private:
-	int tp = 0, // Änderung/Person erkannt und ist im GT
-		fn = 0, // Änderung/Person nicht erkannt, aber im GT
-		fp = 0, // Änderung/Person erkannt, aber nicht im GT
-		tn = 0; // Änderung/Person nicht erkannt und ist nicht im GT
+	int tp = 0, // Changes/person detected and in GT
+		fn = 0, // Changes/person not detected, but in GT
+		fp = 0, // Changes/person detected, but not in  GT
+		tn = 0; // Changes/person not detected and not in GT
 
 public:
-	void evaluate(Mat image, Mat gt) {
+	/* 
+	* Compares a mask and a given groundtruth image and 
+	* add ups all true positves to false negatives pixels 
+	*/
+	void evaluate(Mat mask, Mat gt) {
 		tp = 0; fn = 0; fp = 0; tn = 0;
 		uchar whitePixel = 255;
 		uchar blackPixel = 0;
 		uchar gtPixel;
 		uchar imagePixel;
-		for (int row = 1; row < image.rows; row++) {
-			for (int col = 1; col < image.cols; col++) {
+		for (int row = 1; row < mask.rows; row++) {
+			for (int col = 1; col < mask.cols; col++) {
 				gtPixel = gt.at<uchar>(row, col);
-				imagePixel = image.at<uchar>(row, col);
+				imagePixel = mask.at<uchar>(row, col);
 				if (imagePixel == blackPixel && gtPixel == blackPixel) {
 					tn++;
 					continue;
@@ -102,7 +110,7 @@ public:
 					fp++;
 					continue;
 				}
-				// Grauwerte werden ignoriert
+				// Grayvalues are being ignored
 			}
 		}
 	}
@@ -129,7 +137,10 @@ public:
 		return  (2 * p * r) / (p + r);
 	}
 
-	void printValus() {
+	/*
+	* Debug print to console to check local attributes 
+	*/
+	void printValues() {
 		std::cout << "tp: " << tp
 			<< "   tn: " << tn
 			<< "   fp: " << fp
@@ -155,6 +166,7 @@ int main() {
 	image.apply();
 
 	for (int pos = 300; pos <= 1200; pos += 1) {
+		// Loading Images
 		std::ostringstream in_img_name, gt_img_name;
 		char pos_str[7];
 		sprintf_s(pos_str, "%0.6d", pos);
@@ -175,6 +187,7 @@ int main() {
 			return 1;
 		}
 
+		// Appling BG Subtraction and evalutation
 		mog2BS->apply(in_img, mog2Mask);
 		mog2Eval.evaluate(mog2Mask, gt_img);
 
@@ -184,6 +197,7 @@ int main() {
 		in_img = image.substraction(in_img);
 		ownEval.evaluate(in_img, gt_img);
 
+		// putting text on image and show it
 		//MOG 2
 		putText(mog2Mask, "FScore: " + std::to_string(mog2Eval.getFScore()), Point(5, 30), FONT_HERSHEY_DUPLEX, 0.8, { 100, 100, 100 });
 		imshow("Mog2 Background Substraction", mog2Mask);
@@ -196,6 +210,7 @@ int main() {
 		putText(in_img, "FScore: " + std::to_string(ownEval.getFScore()), Point(5, 30), FONT_HERSHEY_DUPLEX, 0.8, { 100, 100, 100 });
 		imshow("Own Background Substraction", in_img);
 		
+		// do 10 steps before waiting again 
 		if (pos % 10 == 0) {
 			int wait = cv::waitKey(0);
 			if (wait == 27) {
