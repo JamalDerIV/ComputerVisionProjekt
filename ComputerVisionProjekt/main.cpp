@@ -46,13 +46,7 @@ public:void apply() {
 		}
 	}
 }
-	  cv::Mat substraction(int pos) {
-
-		  std::ostringstream new_img_name;
-		  char pos_str[7];
-		  sprintf_s(pos_str, "%0.6d", pos);
-		  new_img_name << "data\\data_m2\\1\\input\\in" << pos_str << ".jpg";
-		  cv::Mat imgNew = cv::imread(new_img_name.str(), cv::IMREAD_GRAYSCALE);
+	  cv::Mat substraction(cv::Mat imgNew) {
 
 		  for (int row = 0; row < imgNew.rows; row++) {
 			  for (int col = 0; col < imgNew.cols; col++) {
@@ -167,7 +161,7 @@ int main() {
 		in_img_name << "data\\data_m2\\1\\input\\in" << pos_str << ".jpg";
 		gt_img_name << "data\\data_m2\\1\\groundtruth\\gt" << pos_str << ".png";
 
-		cv::Mat in_img = cv::imread(in_img_name.str(), cv::IMREAD_COLOR);
+		cv::Mat in_img = cv::imread(in_img_name.str(), cv::IMREAD_GRAYSCALE);
 		cv::Mat gt_img = cv::imread(gt_img_name.str(), cv::IMREAD_GRAYSCALE);
 
 		if (in_img.empty())
@@ -187,7 +181,7 @@ int main() {
 		knnBS->apply(in_img, knnMask);
 		knnEval.evaluate(knnMask, gt_img);
 
-		in_img = image.substraction(pos);
+		in_img = image.substraction(in_img);
 		ownEval.evaluate(in_img, gt_img);
 
 		//MOG 2
