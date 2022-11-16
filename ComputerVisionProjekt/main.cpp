@@ -4,6 +4,15 @@
 
 using namespace cv;
 
+/*
+* global variable for the path to load the images from
+*/
+std::string globalImagePath()
+{
+	static std::string imagePath("data\\data_m2\\1\\");
+	return imagePath;
+}
+
 class bgSub {
 private:
 	int imagesToLoad;
@@ -28,7 +37,7 @@ public:
 		char pos_str[7];
 		sprintf_s(pos_str, "%0.6d", i);
 
-		img_name << "data\\data_m2\\1\\input\\in" << pos_str << ".jpg";
+		img_name << globalImagePath() << "input\\in" << pos_str << ".jpg";
 		images[imagesToLoad-i] = cv::imread(img_name.str(), cv::IMREAD_GRAYSCALE);
 	}
 
@@ -189,8 +198,8 @@ int main() {
 		std::ostringstream in_img_name, gt_img_name;
 		char pos_str[7];
 		sprintf_s(pos_str, "%0.6d", pos);
-		in_img_name << "data\\data_m2\\1\\input\\in" << pos_str << ".jpg";
-		gt_img_name << "data\\data_m2\\1\\groundtruth\\gt" << pos_str << ".png";
+		in_img_name << globalImagePath() << "input\\in" << pos_str << ".jpg";
+		gt_img_name << globalImagePath() << "groundtruth\\gt" << pos_str << ".png";
 
 		cv::Mat in_img = cv::imread(in_img_name.str(), cv::IMREAD_GRAYSCALE);
 		cv::Mat gt_img = cv::imread(gt_img_name.str(), cv::IMREAD_GRAYSCALE);
