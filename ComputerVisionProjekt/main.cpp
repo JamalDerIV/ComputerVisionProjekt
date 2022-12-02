@@ -20,24 +20,17 @@ int main() {
 	cv::Ptr<BackgroundSubtractor> mog2BS = createBackgroundSubtractorMOG2();
 	cv::Ptr<BackgroundSubtractor> knnBS = createBackgroundSubtractorKNN();
 
-	for (int pos = 300; pos <= 1200; pos += 10) { // Stepping 10 Frames at a time might conflict with Background Subtraction
+	for (int pos = 19; pos <= 1050; pos += 10) { // Stepping 10 Frames at a time might conflict with Background Subtraction
 		std::ostringstream in_img_name, gt_img_name;
 		char pos_str[7]; 
 		sprintf_s(pos_str, "%0.6d", pos);
-		in_img_name <<  "data\\data_m2\\1\\input\\in"<< pos_str <<".jpg";
-		gt_img_name <<  "data\\data_m2\\1\\groundtruth\\gt"<< pos_str <<".png";
+		in_img_name <<  "data\\data_m3\\1\\img1\\"<< pos_str <<".jpg";
 		
 		cv::Mat in_img = cv::imread(in_img_name.str(), cv::IMREAD_COLOR);
-		cv::Mat gt_img = cv::imread(gt_img_name.str(), cv::IMREAD_COLOR);
 
 		if (in_img.empty())
 		{
 			std::cout << "Could not read the image: " << in_img_name.str() << std::endl;
-			return 1;
-		}
-		if (gt_img.empty())
-		{
-			std::cout << "Could not read the image: " << gt_img_name.str() << std::endl;
 			return 1;
 		}
 
@@ -45,13 +38,17 @@ int main() {
 		mog2BS->apply(in_img, mog2Mask);
 		knnBS->apply(in_img, knnMask);
 
-		imshow("Own Substraction",  bgSub(in_img, gt_img));
 		//imshow("Double Substraction",  in_img - (in_img - gt_img));
 		imshow("Mog2 Background Substraction",  mog2Mask);
 		imshow("KNN Background Substraction",  knnMask);
 
-		int wait = cv::waitKey(0);
-		if (wait == 27) break; // ESC Key
+		// do 10 steps before waiting again 
+		if (pos % 1 == 0) {
+			int wait = cv::waitKey(0);
+			if (wait == 27) {
+				break; // ESC Key
+			}
+		}
 
 		cv::destroyAllWindows();
 	}
