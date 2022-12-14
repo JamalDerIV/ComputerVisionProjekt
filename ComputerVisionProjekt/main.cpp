@@ -4,6 +4,13 @@
 
 using namespace cv;
 
+void darkenMidMat(cv::Mat mat) {
+	for (int row = 15; row < mat.rows-15; row++) {
+		for (int col = 15; col < mat.cols-15; col++) {
+			mat.at<uchar>(row, col) = 0;
+		}
+	}
+}
 
 int main() {
 
@@ -46,10 +53,11 @@ int main() {
 	cv::Mat mog2Mask, prevMask, finishedMask;
 	prevMask = cv::Mat::zeros(cv::Size(first_img.cols, first_img.rows), CV_8UC1);
 
+	bool personLeft = false;
 	
-	int pos = 11;
-	const int startingThreshold = pos + 10;
-	while ( pos < 1050){
+	int pos = 1;
+	const int startingThreshold = pos + 5;
+	while ( pos < 795){
 
 		std::cout << pos++ << std::endl;
 
@@ -65,31 +73,58 @@ int main() {
 			return 1;
 		}
 
-		if(pos <= startingThreshold) {
+		if(p0.size() < 1 && !personLeft) {
 			mog2BS->apply(inputImg, mog2Mask, 0.005); 
 			cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-			cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(3, 3)));
+			cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(4, 4)));
+			darkenMidMat(mog2Mask);
+
+			/*namedWindow("mog2Mask", WND_PROP_FULLSCREEN);
+			setWindowProperty("mog2Mask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
+			imshow("mog2Mask", mog2Mask);
+
+			namedWindow("prevMask", WND_PROP_FULLSCREEN);
+			setWindowProperty("prevMask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
+			imshow("prevMask", prevMask);*/
+
 			finishedMask = abs(mog2Mask - prevMask);
-			cv::erode(finishedMask, finishedMask, getStructuringElement(MORPH_ELLIPSE, Size(1, 1)));
-			cv::dilate(finishedMask, finishedMask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
+			
+
+			/*namedWindow("finishedMask", WND_PROP_FULLSCREEN);
+			setWindowProperty("finishedMask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
+			imshow("finishedMask", finishedMask);*/
+
 			prevMask = mog2Mask.clone();
+			
+			cv::erode(finishedMask, finishedMask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
+			cv::dilate(finishedMask, finishedMask, getStructuringElement(MORPH_ELLIPSE, Size(6, 6)));
+			namedWindow("aa", WND_PROP_FULLSCREEN);
+			setWindowProperty("aa", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
 			imshow("aa", finishedMask);
 		}
-		
-		if (pos == startingThreshold) {
+
+		if (p0.size() < 1 && pos >= startingThreshold && !personLeft) {
 			prevGrayImg = inputImg.clone();
 			cvtColor(prevGrayImg, prevGrayImg, COLOR_BGR2GRAY);
-			goodFeaturesToTrack(prevGrayImg, p0, 200, 0.0001, 10, finishedMask, 25, false, 0.04);
+			goodFeaturesToTrack(prevGrayImg, p0, 1, 0.00001, 35, finishedMask, 200, true, 0.24);
 		}
-		
+
 		Mat grayImg;
 		cvtColor(inputImg, grayImg, COLOR_BGR2GRAY);
 		// calculate optical flow
 		std::vector<uchar> status;
 		std::vector<float> err;
-		if(pos >= startingThreshold){
-			TermCriteria criteria = TermCriteria((TermCriteria::COUNT)+(TermCriteria::EPS), 10, 0.03);
-			calcOpticalFlowPyrLK(prevGrayImg, grayImg, p0, p1, status, err, Size(15, 15), 2, criteria);
+		if (p0.size() >= 1) {
+			if (p0[0].x < 0 || p0[0].y < 0) {
+				std::cout << "----------------- person out of image! ------------------";
+				personLeft = true;
+				p0.clear();
+			}
+		}
+
+		if(pos >= startingThreshold && p0.size() >= 1 && !personLeft){
+			TermCriteria criteria = TermCriteria((TermCriteria::COUNT)+(TermCriteria::EPS), 5, 0.001);
+			calcOpticalFlowPyrLK(prevGrayImg, grayImg, p0, p1, status, err, Size(14, 14), 5, criteria);
 		}
 
 		std::vector<Point2f> good_new;
@@ -128,6 +163,9 @@ int main() {
 		
 		//cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(2, 2)));
 		//cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(3, 3)));
+
+		namedWindow("Mog2 Background Substraction", WND_PROP_FULLSCREEN);
+		setWindowProperty("Mog2 Background Substraction", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
 
 		imshow("Mog2 Background Substraction", inputImg);
 		
