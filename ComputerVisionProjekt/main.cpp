@@ -62,26 +62,23 @@ int main() {
 		std::cout << "Could not open Ground Truth file. Evaluation will be skipped." << std::endl;
 	}
 
-	// Meanshift
+	// Meanshift Parameters
 	int width = 100;
 	int height = 180;
 	float scaleFactor = 1.2f;
 
 	Rect trackFrame(0, 0, width, height);
-	Mat roi, hsv_roi, mask;
-	// set up the ROI for tracking // Region of Interest 
-	roi = first_img(trackFrame);
-	cvtColor(roi, hsv_roi, COLOR_BGR2HSV);
-	Scalar lowb = Scalar(50, 20, 50);
-	Scalar highb = Scalar(100, 120, 200);
-	inRange(hsv_roi, lowb, highb, mask);
-	Mat personMask;
+	Mat roi, hsv_roi, mask, personMask;
 	int yOffset = 0, xOffset = 0;
-
 	TermCriteria term_crit(TermCriteria::EPS | TermCriteria::COUNT, 10, 1);
 	Mat hsv;
-	Mat dst = Mat::zeros(first_img.size(), first_img.type());
+	Mat backProjectionMask = Mat::zeros(first_img.size(), first_img.type());
+	// set up the ROI for tracking 
+	roi = first_img(trackFrame);
+	cvtColor(roi, hsv_roi, COLOR_BGR2HSV);
+	inRange(hsv_roi, Scalar(50, 20, 50), Scalar(100, 120, 200), mask);
 
+	// calculate Histogram for mean shift
 	float range_[] = { 0, 180 };
 	const float* range[] = { range_ };
 	int histSize[] = { 180 };
@@ -184,30 +181,34 @@ int main() {
 
 			// Mean Shift Mask
 			cvtColor(inputImg, hsv, COLOR_BGR2HSV);
-			calcBackProject(&hsv, 1, channels, roi_hist, dst, range);
+			calcBackProject(&hsv, 1, channels, roi_hist, backProjectionMask, range);
 			
+			// calculating an ROI around pointFinished
 			trackFrame.x = p0[0].x - (width * 0.5);
 			trackFrame.y = p0[0].y - (height);
 			int x = p0[0].x - (width * (scaleFactor / 2)) + xOffset;
-			x = (x < 0) ? 0 : x;
 			int y = p0[0].y - (height * (scaleFactor / 2)) + yOffset;
+			// checking for frame borders 
+			x = (x < 0) ? 0 : x;
 			y = (y < 0) ? 0 : y;
 			int cutWidth = (width * scaleFactor + x >= mog2Mask.cols) ? (mog2Mask.cols - x): width*scaleFactor; 
 			int cutHeight = (height * scaleFactor + y >= mog2Mask.rows) ? (mog2Mask.rows - y): height*scaleFactor;
+			// cutting backProjectionMask and mog2Mask together in the given ROI
 			Rect cuttingSize = cv::Rect(x, y, cutWidth, cutHeight);
 			Mat cutPerson = mog2Mask(cuttingSize);
-			Mat combinedMask = dst(cuttingSize) | cutPerson;
+			Mat combinedMask = backProjectionMask(cuttingSize) | cutPerson;
 			personMask = Mat::zeros(mog2Mask.size(), mog2Mask.type());
 			combinedMask.copyTo(personMask(cuttingSize));
-			rectangle(inputImg, Rect(x, y, cutWidth, cutHeight), 1, 1);
+			rectangle(inputImg, Rect(x, y, cutWidth, cutHeight), 1, 1); // black box indicating ROI for mean shift
 			
 			meanShift(personMask, trackFrame, term_crit);
-			rectangle(inputImg, trackFrame, 255, 1);
+			rectangle(inputImg, trackFrame, 255, 1); // blue box around person
 		}
 
 		if (pos >= frame) {
 			double eval = 0;
 			
+			// while file has lines -> read line, calculate evaluation and draw rectangle 
 			if (gtfile.is_open()) {
 				Rect gt = Rect(bb_left, bb_top, bb_width, bb_height);
 				eval = iou(gt, trackFrame);
@@ -216,6 +217,7 @@ int main() {
 				if (!gtfile) gtfile.close();
 			}
 			
+			// while either our box or the gt box is present we want to sum up total evaluation
 			if (!personLeft || gtfile.is_open()) {
 				std::cout << " Evaluation = " << eval << std::endl;
 				evalSum += eval;
