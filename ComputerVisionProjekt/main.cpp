@@ -1,5 +1,6 @@
 #include <opencv2\opencv.hpp>
 #include <iostream>
+#include <fstream>
 #include <vector>
 
 using namespace cv;
@@ -26,8 +27,7 @@ bool isBigger(float a, float b) {
 	return a > b;
 }
 
-void myGoodFeaturesToTrackFunction()
-{
+void myGoodFeaturesToTrackFunction(){
 	myHarrisCOPY = src.clone();
 
 	int multi = 1;
@@ -204,14 +204,12 @@ void cornerDetection(cv::Mat mat, cv::Mat harrisDST, cv::Mat mask) {
 	int blockSize = 200, apertureSize = 3;
 
 	//get the eigenValues
-	cornerEigenValsAndVecs(mat,harrisDST,blockSize,apertureSize);
+	cornerEigenValsAndVecs(mat, harrisDST, blockSize, apertureSize);
 
 	//calculate fore every pixel a corner using eigenValues and the free parameter for the harris detector
 	mC = Mat(srcGray.size(), CV_32FC1);
-	for (int i = 0; i < srcGray.rows; i++)
-	{
-		for (int j = 0; j < srcGray.cols; j++)
-		{
+	for (int i = 0; i < srcGray.rows; i++) {
+		for (int j = 0; j < srcGray.cols; j++) {
 			if (mask.at<uchar>(i, j) != 0) {
 				float lambda_1 = harrisDST.at<Vec6f>(i, j)[0];
 				float lambda_2 = harrisDST.at<Vec6f>(i, j)[1];
@@ -230,6 +228,23 @@ void cornerDetection(cv::Mat mat, cv::Mat harrisDST, cv::Mat mask) {
 	myGoodFeaturesToTrackFunction();
 }
 
+//claculates the IoU
+double iou(Rect boxGT, Rect boxPredicted) {
+	int xA = std::max(boxGT.x, boxPredicted.x),
+		xB = std::min(boxGT.x + boxGT.width, boxPredicted.x + boxPredicted.width),
+		yA = std::max(boxGT.y, boxPredicted.y),
+		yB = std::min(boxGT.y + boxGT.height, boxPredicted.y + boxPredicted.height);
+	if (xA > xB) return 0.0;
+	if (yA > yB) return 0.0;
+	// intersection
+	int iArea = (xB - xA + 1) * (yB - yA + 1);
+	//union
+	int areaA = (boxGT.width + 1) * (boxGT.height + 1);
+	int areaB = (boxPredicted.width + 1) * (boxPredicted.height + 1);
+
+	return (double)iArea / (double)(areaA + areaB - iArea);
+}
+
 int main() {
 
 	cv::Ptr<BackgroundSubtractorMOG2> mog2BS = createBackgroundSubtractorMOG2();
@@ -240,9 +255,10 @@ int main() {
 	mog2BS->setHistory(100);
 	
 	std::ostringstream first_img_name;
+	String filepath( "data\\data_m3\\2\\");
 	char pos_str[7];
 	sprintf_s(pos_str, "%0.6d", 1);
-	first_img_name << "data\\data_m3\\2\\img1\\" << pos_str << ".jpg";
+	first_img_name << filepath <<"img1\\" << pos_str << ".jpg";
 
 	cv::Mat first_img = cv::imread(first_img_name.str(), cv::IMREAD_COLOR);
 	if (first_img.empty())
@@ -251,6 +267,42 @@ int main() {
 		return 1;
 	}
 
+	// Reading (custom) gt file
+	//  -> the ',' seperator has been replaced with a ' ' whitespace
+	std::ifstream gtfile(filepath + "\\gt\\gt_single_space.txt");
+	int frame, id, bb_left, bb_top, bb_width, bb_height;
+	gtfile >> frame >> id >> bb_left >> bb_top >> bb_width >> bb_height;
+	double evalSum = 0;
+	int evalIterations = 0;
+	if (!gtfile.is_open()) {
+		std::cout << "Could not open Ground Truth file. Evaluation will be skipped." << std::endl;
+	}
+
+	// Meanshift Parameters
+	int width = 100;
+	int height = 180;
+	float scaleFactor = 1.2f;
+
+	Rect trackFrame(0, 0, width, height);
+	Mat roi, hsv_roi, mask, personMask;
+	int yOffset = 0, xOffset = 0;
+	TermCriteria term_crit(TermCriteria::EPS | TermCriteria::COUNT, 10, 1);
+	Mat hsv;
+	Mat backProjectionMask = Mat::zeros(first_img.size(), first_img.type());
+	// set up the ROI for tracking 
+	roi = first_img(trackFrame);
+	cvtColor(roi, hsv_roi, COLOR_BGR2HSV);
+	inRange(hsv_roi, Scalar(50, 20, 50), Scalar(100, 120, 200), mask);
+
+	// calculate Histogram for mean shift
+	float range_[] = { 0, 180 };
+	const float* range[] = { range_ };
+	int histSize[] = { 180 };
+	int channels[] = { 0 };
+	Mat roi_hist;
+	calcHist(&hsv_roi, 1, channels, mask, roi_hist, 1, histSize, range);
+	normalize(roi_hist, roi_hist, 0, 255, NORM_MINMAX);
+	
 	// Create some random colors
 	std::vector<Scalar> colors;
 	RNG rng;
@@ -274,14 +326,13 @@ int main() {
 	int pos = 1;
 	const int startingThreshold = pos + 35;
 	while ( pos < 795){
-
-		std::cout << pos++ << std::endl;
+		std::cout << "Frame: " << pos++ << std::endl;
 
 		std::ostringstream inImgName;
 		char pos_str[7]; 
 		sprintf_s(pos_str, "%0.6d", pos);
-		inImgName <<  "data\\data_m3\\2\\img1\\"<< pos_str <<".jpg";
-		
+		inImgName << filepath << "img1\\"<< pos_str <<".jpg";
+
 		cv::Mat inputImg = cv::imread(inImgName.str(), cv::IMREAD_COLOR);
 		if (inputImg.empty())
 		{
@@ -318,18 +369,33 @@ int main() {
 			prevStaticGrayImg = inputImg.clone();
 			cvtColor(prevStaticGrayImg, prevStaticGrayImg, COLOR_BGR2GRAY);
 			cornerDetection(prevStaticGrayImg, harrisDST, finishedMask);
+
+			if (pointFinished.size() > 0) {
+				if (pointFinished[0].y > mog2Mask.rows * 0.9) {
+					yOffset = height / 2;
+				}
+				else if (pointFinished[0].y < mog2Mask.rows * 0.1) {
+					yOffset = -height / 2;
+				}
+
+				if (pointFinished[0].x > mog2Mask.cols * 0.9) {
+					xOffset = width / 2;
+				}
+				else if (pointFinished[0].x < mog2Mask.cols * 0.1) {
+					xOffset = -width / 2;
+				}
+			}
 		}
 			//goodFeaturesToTrack(prevStaticGrayImg, pointFinished, 1, 0.00001, 35, finishedMask, 200, true, 0.24);
 		//}
 
 		Mat grayImg;
 		cvtColor(inputImg, grayImg, COLOR_BGR2GRAY);
-		// calculate optical flow
 		std::vector<uchar> status;
 		std::vector<float> err;
 		if (pointFinished.size() >= 1) {
 			if (pointFinished[0].x < 0 || pointFinished[0].y < 0) {
-				std::cout << "----------------- person out of image! ------------------";
+				std::cout << "----------------- person out of image! ------------------" << std::endl;
 				personLeft = true;
 				pointFinished.clear();
 			}
@@ -338,11 +404,58 @@ int main() {
 		if(pos >= startingThreshold && pointFinished.size() >= 1 && !personLeft){
 			TermCriteria criteria = TermCriteria((TermCriteria::COUNT)+(TermCriteria::EPS), 5, 0.001);
 			calcOpticalFlowPyrLK(prevStaticGrayImg, grayImg, pointFinished, p1, status, err, Size(14, 14), 5, criteria);
+		
+			// Mean Shift Mask
+			cvtColor(inputImg, hsv, COLOR_BGR2HSV);
+			calcBackProject(&hsv, 1, channels, roi_hist, backProjectionMask, range);
+			
+			// calculating an ROI around pointFinished
+			trackFrame.x = pointFinished[0].x - (width * 0.5);
+			trackFrame.y = pointFinished[0].y - (height);
+			int x = pointFinished[0].x - (width * (scaleFactor / 2)) + xOffset;
+			int y = pointFinished[0].y - (height * (scaleFactor / 2)) + yOffset;
+			// checking for frame borders 
+			x = (x < 0) ? 0 : x;
+			y = (y < 0) ? 0 : y;
+			int cutWidth = (width * scaleFactor + x >= mog2Mask.cols) ? (mog2Mask.cols - x): width*scaleFactor; 
+			int cutHeight = (height * scaleFactor + y >= mog2Mask.rows) ? (mog2Mask.rows - y): height*scaleFactor;
+			// cutting backProjectionMask and mog2Mask together in the given ROI
+			Rect cuttingSize = cv::Rect(x, y, cutWidth, cutHeight);
+			Mat cutPerson = mog2Mask(cuttingSize);
+			Mat combinedMask = backProjectionMask(cuttingSize) | cutPerson;
+			personMask = Mat::zeros(mog2Mask.size(), mog2Mask.type());
+			combinedMask.copyTo(personMask(cuttingSize));
+			rectangle(inputImg, Rect(x, y, cutWidth, cutHeight), 1, 1); // black box indicating ROI for mean shift
+			
+			meanShift(personMask, trackFrame, term_crit);
+			rectangle(inputImg, trackFrame, 255, 1); // blue box around person
+		}
+
+		if (pos >= frame) {
+			double eval = 0;
+			
+			// while file has lines -> read line, calculate evaluation and draw rectangle 
+			if (gtfile.is_open()) {
+				Rect gt = Rect(bb_left, bb_top, bb_width, bb_height);
+				eval = iou(gt, trackFrame);
+				rectangle(inputImg, gt, Scalar(0, 255, 0), 1);
+				gtfile >> frame >> id >> bb_left >> bb_top >> bb_width >> bb_height;
+				if (!gtfile) gtfile.close();
+			}
+			
+			// while either our box or the gt box is present we want to sum up total evaluation
+			if (!personLeft || gtfile.is_open()) {
+				std::cout << " Evaluation = " << eval << std::endl;
+				evalSum += eval;
+				evalIterations++;
+			}
+			else {
+				std::cout << " Total Eval Score: " << evalSum / evalIterations << std::endl;
+			}
 		}
 
 		std::vector<Point2f> good_new;
 		for (uint i = 0; i < pointFinished.size(); i++) {
-			std::cout << " \t\ti: " << i << " \tstatus:" << status[i] << " \tpointFinished:" << pointFinished[i] << " \tp1:" << p1[i] << std::endl;
 			// Select good points
 			if (status[i] == 1) {
 				good_new.push_back(p1[i]);
@@ -377,7 +490,6 @@ int main() {
 
 		namedWindow("Mog2 Background Substraction", WND_PROP_FULLSCREEN);
 		setWindowProperty("Mog2 Background Substraction", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-
 		imshow("Mog2 Background Substraction", inputImg);
 		
 		int keyboard = waitKey();
