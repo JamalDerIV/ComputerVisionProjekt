@@ -32,6 +32,35 @@ int main() {
 		std::cout << "Could not read the image: " <<  first_img_name.str() << std::endl;
 		return 1;
 	}
+
+	// Meanshift
+	int width = 100;
+	int height = 180;
+	float scaleFactor = 1.2f;
+
+	Rect trackFrame(0, 0, width, height);
+	Mat roi, hsv_roi, mask;
+	// set up the ROI for tracking // Region of Interest 
+	roi = first_img(trackFrame);
+	cvtColor(roi, hsv_roi, COLOR_BGR2HSV);
+	//inRange(hsv_roi, Scalar(90, 37, 100), Scalar(110, 120, 180), mask);
+	Scalar lowb = Scalar(50, 20, 50);
+	Scalar highb = Scalar(100, 120, 200);
+	inRange(hsv_roi, lowb, highb, mask);
+	Mat personMask;
+	int yOffset = 0, xOffset = 0;
+
+	TermCriteria term_crit(TermCriteria::EPS | TermCriteria::COUNT, 10, 1);
+	Mat hsv;
+	Mat dst = Mat::zeros(first_img.size(), first_img.type());
+
+	float range_[] = { 0, 180 };
+	const float* range[] = { range_ };
+	int histSize[] = { 180 };
+	int channels[] = { 0 };
+	Mat roi_hist;
+	calcHist(&hsv_roi, 1, channels, mask, roi_hist, 1, histSize, range);
+	normalize(roi_hist, roi_hist, 0, 255, NORM_MINMAX);
 	
 
 	// Create some random colors
@@ -73,26 +102,15 @@ int main() {
 			return 1;
 		}
 
+
+		mog2BS->apply(inputImg, mog2Mask, 0.005);
+		cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
+		cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(4, 4)));
 		if(p0.size() < 1 && !personLeft) {
-			mog2BS->apply(inputImg, mog2Mask, 0.005); 
-			cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-			cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(4, 4)));
+			// 
 			darkenMidMat(mog2Mask);
 
-			/*namedWindow("mog2Mask", WND_PROP_FULLSCREEN);
-			setWindowProperty("mog2Mask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-			imshow("mog2Mask", mog2Mask);
-
-			namedWindow("prevMask", WND_PROP_FULLSCREEN);
-			setWindowProperty("prevMask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-			imshow("prevMask", prevMask);*/
-
 			finishedMask = abs(mog2Mask - prevMask);
-			
-
-			/*namedWindow("finishedMask", WND_PROP_FULLSCREEN);
-			setWindowProperty("finishedMask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-			imshow("finishedMask", finishedMask);*/
 
 			prevMask = mog2Mask.clone();
 			
@@ -107,11 +125,27 @@ int main() {
 			prevGrayImg = inputImg.clone();
 			cvtColor(prevGrayImg, prevGrayImg, COLOR_BGR2GRAY);
 			goodFeaturesToTrack(prevGrayImg, p0, 1, 0.00001, 35, finishedMask, 200, true, 0.24);
+
+			if (p0.size() > 0) {
+				if (p0[0].y > mog2Mask.rows * 0.9) {
+					yOffset = height / 2;
+				}
+				else if (p0[0].y < mog2Mask.rows * 0.1) {
+					yOffset = -height / 2;
+				}
+
+				if (p0[0].x > mog2Mask.cols * 0.9) {
+					xOffset = width / 2;
+				}
+				else if (p0[0].x < mog2Mask.cols * 0.1) {
+					xOffset = -width / 2;
+				}
+			}
+			
 		}
 
 		Mat grayImg;
 		cvtColor(inputImg, grayImg, COLOR_BGR2GRAY);
-		// calculate optical flow
 		std::vector<uchar> status;
 		std::vector<float> err;
 		if (p0.size() >= 1) {
@@ -125,11 +159,32 @@ int main() {
 		if(pos >= startingThreshold && p0.size() >= 1 && !personLeft){
 			TermCriteria criteria = TermCriteria((TermCriteria::COUNT)+(TermCriteria::EPS), 5, 0.001);
 			calcOpticalFlowPyrLK(prevGrayImg, grayImg, p0, p1, status, err, Size(14, 14), 5, criteria);
+
+			// Mean Shift Mask
+			cvtColor(inputImg, hsv, COLOR_BGR2HSV);
+			calcBackProject(&hsv, 1, channels, roi_hist, dst, range);
+			
+			trackFrame.x = p0[0].x - (width * 0.5);
+			trackFrame.y = p0[0].y - (height);
+			int x = p0[0].x - (width * (scaleFactor / 2)) + xOffset;
+			x = (x < 0) ? 0 : x;
+			int y = p0[0].y - (height * (scaleFactor / 2)) + yOffset;
+			y = (y < 0) ? 0 : y;
+			int cutWidth = (width * scaleFactor + x >= mog2Mask.cols) ? (mog2Mask.cols - x): width*scaleFactor; 
+			int cutHeight = (height * scaleFactor + y >= mog2Mask.rows) ? (mog2Mask.rows - y): height*scaleFactor;
+			Rect cuttingSize = cv::Rect(x, y, cutWidth, cutHeight);
+			Mat cutPerson = mog2Mask(cuttingSize);
+			Mat combinedMask = dst(cuttingSize) | cutPerson;
+			personMask = Mat::zeros(mog2Mask.size(), mog2Mask.type());
+			combinedMask.copyTo(personMask(cuttingSize));
+			rectangle(inputImg, Rect(x, y, cutWidth, cutHeight), 1, 1);
+			
+			meanShift(personMask, trackFrame, term_crit);
+			rectangle(inputImg, trackFrame, 255, 1);
 		}
 
 		std::vector<Point2f> good_new;
 		for (uint i = 0; i < p0.size(); i++) {
-			std::cout << " \t\ti: " << i << " \tstatus:" << status[i] << " \tp0:" << p0[i] << " \tp1:" << p1[i] << std::endl;
 			// Select good points
 			if (status[i] == 1) {
 				good_new.push_back(p1[i]);
