@@ -1,5 +1,6 @@
 #include <opencv2\opencv.hpp>
 #include <iostream>
+#include <fstream>
 #include <vector>
 
 using namespace cv;
@@ -12,6 +13,22 @@ void darkenMidMat(cv::Mat mat) {
 	}
 }
 
+double iou(Rect boxGT, Rect boxPredicted) {
+	int xA = std::max(boxGT.x, boxPredicted.x),
+		xB = std::min(boxGT.x + boxGT.width, boxPredicted.x + boxPredicted.width),
+		yA = std::max(boxGT.y, boxPredicted.y),
+		yB = std::min(boxGT.y + boxGT.height, boxPredicted.y + boxPredicted.height);
+	if (xA > xB) return 0.0;
+	if (yA > yB) return 0.0;
+	// intersection
+	int iArea = (xB - xA + 1) * (yB - yA + 1);
+	//union
+	int areaA = (boxGT.width + 1) * (boxGT.height + 1);
+	int areaB = (boxPredicted.width + 1) * (boxPredicted.height + 1);
+
+	return (double)iArea / (double)(areaA + areaB - iArea);
+}
+
 int main() {
 
 	cv::Ptr<BackgroundSubtractorMOG2> mog2BS = createBackgroundSubtractorMOG2();
@@ -22,15 +39,27 @@ int main() {
 	mog2BS->setHistory(100);
 	
 	std::ostringstream first_img_name;
+	String filepath( "data\\data_m3\\2\\");
 	char pos_str[7];
 	sprintf_s(pos_str, "%0.6d", 1);
-	first_img_name << "data\\data_m3\\1\\img1\\" << pos_str << ".jpg";
+	first_img_name << filepath <<"img1\\" << pos_str << ".jpg";
 
 	cv::Mat first_img = cv::imread(first_img_name.str(), cv::IMREAD_COLOR);
 	if (first_img.empty())
 	{
 		std::cout << "Could not read the image: " <<  first_img_name.str() << std::endl;
 		return 1;
+	}
+
+	// Reading (custom) gt file
+	//  -> the ',' seperator has been replaced with a ' ' whitespace
+	std::ifstream gtfile(filepath + "\\gt\\gt_single_space.txt");
+	int frame, id, bb_left, bb_top, bb_width, bb_height;
+	gtfile >> frame >> id >> bb_left >> bb_top >> bb_width >> bb_height;
+	double evalSum = 0;
+	int evalIterations = 0;
+	if (!gtfile.is_open()) {
+		std::cout << "Could not open Ground Truth file. Evaluation will be skipped." << std::endl;
 	}
 
 	// Meanshift
@@ -43,7 +72,6 @@ int main() {
 	// set up the ROI for tracking // Region of Interest 
 	roi = first_img(trackFrame);
 	cvtColor(roi, hsv_roi, COLOR_BGR2HSV);
-	//inRange(hsv_roi, Scalar(90, 37, 100), Scalar(110, 120, 180), mask);
 	Scalar lowb = Scalar(50, 20, 50);
 	Scalar highb = Scalar(100, 120, 200);
 	inRange(hsv_roi, lowb, highb, mask);
@@ -85,15 +113,14 @@ int main() {
 	bool personLeft = false;
 	
 	int pos = 1;
-	const int startingThreshold = pos + 5;
+	const int startingThreshold = pos + 35;
 	while ( pos < 795){
-
-		std::cout << pos++ << std::endl;
+		std::cout << "Frame: " << pos++ << std::endl;
 
 		std::ostringstream inImgName;
 		char pos_str[7]; 
 		sprintf_s(pos_str, "%0.6d", pos);
-		inImgName <<  "data\\data_m3\\1\\img1\\"<< pos_str <<".jpg";
+		inImgName << filepath << "img1\\"<< pos_str <<".jpg";
 		
 		cv::Mat inputImg = cv::imread(inImgName.str(), cv::IMREAD_COLOR);
 		if (inputImg.empty())
@@ -107,7 +134,6 @@ int main() {
 		cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 		cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(4, 4)));
 		if(p0.size() < 1 && !personLeft) {
-			// 
 			darkenMidMat(mog2Mask);
 
 			finishedMask = abs(mog2Mask - prevMask);
@@ -116,9 +142,6 @@ int main() {
 			
 			cv::erode(finishedMask, finishedMask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 			cv::dilate(finishedMask, finishedMask, getStructuringElement(MORPH_ELLIPSE, Size(6, 6)));
-			namedWindow("aa", WND_PROP_FULLSCREEN);
-			setWindowProperty("aa", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-			imshow("aa", finishedMask);
 		}
 
 		if (p0.size() < 1 && pos >= startingThreshold && !personLeft) {
@@ -141,7 +164,6 @@ int main() {
 					xOffset = -width / 2;
 				}
 			}
-			
 		}
 
 		Mat grayImg;
@@ -150,7 +172,7 @@ int main() {
 		std::vector<float> err;
 		if (p0.size() >= 1) {
 			if (p0[0].x < 0 || p0[0].y < 0) {
-				std::cout << "----------------- person out of image! ------------------";
+				std::cout << "----------------- person out of image! ------------------" << std::endl;
 				personLeft = true;
 				p0.clear();
 			}
@@ -181,6 +203,27 @@ int main() {
 			
 			meanShift(personMask, trackFrame, term_crit);
 			rectangle(inputImg, trackFrame, 255, 1);
+		}
+
+		if (pos >= frame) {
+			double eval = 0;
+			
+			if (gtfile.is_open()) {
+				Rect gt = Rect(bb_left, bb_top, bb_width, bb_height);
+				eval = iou(gt, trackFrame);
+				rectangle(inputImg, gt, Scalar(0, 255, 0), 1);
+				gtfile >> frame >> id >> bb_left >> bb_top >> bb_width >> bb_height;
+				if (!gtfile) gtfile.close();
+			}
+			
+			if (!personLeft || gtfile.is_open()) {
+				std::cout << " Evaluation = " << eval << std::endl;
+				evalSum += eval;
+				evalIterations++;
+			}
+			else {
+				std::cout << " Total Eval Score: " << evalSum / evalIterations << std::endl;
+			}
 		}
 
 		std::vector<Point2f> good_new;
@@ -218,16 +261,15 @@ int main() {
 		
 		//cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(2, 2)));
 		//cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(3, 3)));
-
+		
 		namedWindow("Mog2 Background Substraction", WND_PROP_FULLSCREEN);
 		setWindowProperty("Mog2 Background Substraction", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-
 		imshow("Mog2 Background Substraction", inputImg);
 		
 		int keyboard = waitKey();
 		if (keyboard == 'q' || keyboard == 27)
 			break;
-
+		
 		prevGrayImg = grayImg.clone();
 		p0 = good_new;
 
