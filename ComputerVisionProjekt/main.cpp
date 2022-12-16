@@ -9,15 +9,28 @@ cv::Mat harrisDST, myHarrisCOPY, mC;
 
 std::vector<Point2f> pointFinished;
 
+//GoodFeaturesToTrack parameters
 int maxDistance = 60;
+float freeParameterHD = 0.246f;
+int blockSize = 355;
+float qualityLevel = 0.00001;
+
+//Termcriteria parameters to terminate the search after the specific max count
+int criteriaMaxCount = 2;
+int criteriaEpsilon = 0.001;
+
+//CalcopticalFlow parameters
+int maxLevel = 2;
+int sizeNumber = 22;
+
 
 RNG rng(12345);
 
 double myHarrisMinVal, myHarrisMaxVal;
 
 void darkenMidMat(cv::Mat mat) {
-	for (int row = 15; row < mat.rows-15; row++) {
-		for (int col = 15; col < mat.cols-15; col++) {
+	for (int row = 100; row < mat.rows-100; row++) {
+		for (int col = 100; col < mat.cols-100; col++) {
 			mat.at<uchar>(row, col) = 0;
 		}
 	}
@@ -144,7 +157,7 @@ void myGoodFeaturesToTrackFunction(){
 	//check if the corner is smaller than x
 	for (int i = 0; i < srcGray.rows; i++){
 		for (int j = 0; j < srcGray.cols; j++){
-			if (mC.at<float>(i, j) > 0.00001* myHarrisMaxVal){
+			if (mC.at<float>(i, j) > qualityLevel * myHarrisMaxVal){
 				//add the coordiantes to a vector
 				point0.push_back(Point2f(i, j));
 				amount++;
@@ -201,7 +214,7 @@ void myGoodFeaturesToTrackFunction(){
 }
 
 void cornerDetection(cv::Mat mat, cv::Mat harrisDST, cv::Mat mask) {
-	int blockSize = 200, apertureSize = 3;
+	int apertureSize = 3;
 
 	//get the eigenValues
 	cornerEigenValsAndVecs(mat, harrisDST, blockSize, apertureSize);
@@ -215,7 +228,7 @@ void cornerDetection(cv::Mat mat, cv::Mat harrisDST, cv::Mat mask) {
 				float lambda_2 = harrisDST.at<Vec6f>(i, j)[1];
 
 				//für jeden pixel wird ein wert berechnet, der besagt ob ein corner vorhanden sein kann
-				mC.at<float>(i, j) = lambda_1 * lambda_2 - 0.246f * ((lambda_1 + lambda_2) * (lambda_1 + lambda_2));
+				mC.at<float>(i, j) = lambda_1 * lambda_2 - freeParameterHD * ((lambda_1 + lambda_2) * (lambda_1 + lambda_2));
 			}
 			else {
 				mC.at<float>(i, j) = 0;
@@ -255,7 +268,7 @@ int main() {
 	mog2BS->setHistory(100);
 	
 	std::ostringstream first_img_name;
-	String filepath( "data\\data_m3\\2\\");
+	String filepath( "data\\data_m3\\1\\");
 	char pos_str[7];
 	sprintf_s(pos_str, "%0.6d", 1);
 	first_img_name << filepath <<"img1\\" << pos_str << ".jpg";
@@ -321,10 +334,10 @@ int main() {
 	cv::Mat mog2Mask, prevMask, finishedMask;
 	prevMask = cv::Mat::zeros(cv::Size(first_img.cols, first_img.rows), CV_8UC1);
 
-	bool personLeft = false;
+	bool personLeft = false, pointCreated = false;
 	
-	int pos = 1;
-	const int startingThreshold = pos + 35;
+	int pos = 20;
+	const int startingThreshold = pos + 50;
 	while ( pos < 795){
 		std::cout << "Frame: " << pos++ << std::endl;
 
@@ -340,9 +353,22 @@ int main() {
 			return 1;
 		}
 
+		cv::Mat imgOut;
+		//cv::GaussianBlur(inputImg, inputImg,cv::Size(9,9),3,3);
+
+		cv::blur(inputImg, inputImg, cv::Size(7, 7));
+		
 		mog2BS->apply(inputImg, mog2Mask, 0.005);
 		cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 		cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(4, 4)));
+
+		namedWindow("image_clahe", WND_PROP_FULLSCREEN);
+		setWindowProperty("image_clahe", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
+		imshow("image_clahe", inputImg);
+
+		namedWindow("mog2Mask", WND_PROP_FULLSCREEN);
+		setWindowProperty("mog2Mask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
+		imshow("mog2Mask", mog2Mask);
 
 		if(pointFinished.size() < 1 && !personLeft) {
 			darkenMidMat(mog2Mask);
@@ -364,6 +390,10 @@ int main() {
 
 		srcGray = prevGrayImg;
 		src = inputImg;
+
+		if (pointCreated && pointFinished.size() < 1) {
+			personLeft = true;
+		}
 
 		if (pointFinished.size() < 1 && pos >= startingThreshold && !personLeft) {
 			prevStaticGrayImg = inputImg.clone();
@@ -394,16 +424,22 @@ int main() {
 		std::vector<uchar> status;
 		std::vector<float> err;
 		if (pointFinished.size() >= 1) {
-			if (pointFinished[0].x < 0 || pointFinished[0].y < 0) {
+			pointCreated = true;
+			if (pointFinished[0].x < 0 || pointFinished[0].y < 0 || pointFinished[0].x > inputImg.cols || pointFinished[0].y > inputImg.rows) {
 				std::cout << "----------------- person out of image! ------------------" << std::endl;
 				personLeft = true;
 				pointFinished.clear();
 			}
 		}
 
+		if (pointFinished.size() > 0) {
+			//cv::blur(prevStaticGrayImg, prevStaticGrayImg, cv::Size(9, 9));
+			//cv::blur(grayImg, grayImg, cv::Size(5, 5));
+		}
+
 		if(pos >= startingThreshold && pointFinished.size() >= 1 && !personLeft){
-			TermCriteria criteria = TermCriteria((TermCriteria::COUNT)+(TermCriteria::EPS), 5, 0.001);
-			calcOpticalFlowPyrLK(prevStaticGrayImg, grayImg, pointFinished, p1, status, err, Size(14, 14), 5, criteria);
+			TermCriteria criteria = TermCriteria((TermCriteria::COUNT)+(TermCriteria::EPS), criteriaMaxCount, criteriaEpsilon);
+			calcOpticalFlowPyrLK(prevStaticGrayImg, grayImg, pointFinished, p1, status, err, Size(sizeNumber,sizeNumber), maxLevel, criteria);
 		
 			// Mean Shift Mask
 			cvtColor(inputImg, hsv, COLOR_BGR2HSV);
@@ -438,7 +474,7 @@ int main() {
 			if (gtfile.is_open()) {
 				Rect gt = Rect(bb_left, bb_top, bb_width, bb_height);
 				eval = iou(gt, trackFrame);
-				rectangle(inputImg, gt, Scalar(0, 255, 0), 1);
+				//rectangle(inputImg, gt, Scalar(0, 255, 0), 1);
 				gtfile >> frame >> id >> bb_left >> bb_top >> bb_width >> bb_height;
 				if (!gtfile) gtfile.close();
 			}
@@ -497,7 +533,9 @@ int main() {
 			break;
 
 		prevStaticGrayImg = grayImg.clone();
-		pointFinished = good_new;
+		if (!personLeft) {
+			pointFinished = good_new;
+		}
 
 		cv::destroyAllWindows();
 	}
