@@ -12,16 +12,16 @@ std::vector<Point2f> pointFinished;
 //GoodFeaturesToTrack parameters
 int maxDistance = 60;
 float freeParameterHD = 0.246f;
-int blockSize = 355;
+int blockSize = 200;
 float qualityLevel = 0.00001;
 
 //Termcriteria parameters to terminate the search after the specific max count
-int criteriaMaxCount = 2;
+int criteriaMaxCount = 5;
 int criteriaEpsilon = 0.001;
 
 //CalcopticalFlow parameters
-int maxLevel = 2;
-int sizeNumber = 22;
+int maxLevel = 5;
+int sizeNumber = 14;
 
 
 RNG rng(12345);
@@ -29,8 +29,8 @@ RNG rng(12345);
 double myHarrisMinVal, myHarrisMaxVal;
 
 void darkenMidMat(cv::Mat mat) {
-	for (int row = 100; row < mat.rows-100; row++) {
-		for (int col = 100; col < mat.cols-100; col++) {
+	for (int row = 15; row < mat.rows-15; row++) {
+		for (int col = 15; col < mat.cols-15; col++) {
 			mat.at<uchar>(row, col) = 0;
 		}
 	}
@@ -84,6 +84,7 @@ void myGoodFeaturesToTrackFunction(){
 		}
 	}
 
+	//checks the (if) missed out bottom last pixels by ixi blocks to also minimize the corner amount 
 	for (o = 0; o < jMax; o += ((nms / 2) + (nms / 3) + adNumber)) {
 		float tempNumber = 0;
 		int tempX = 0, tempY = 0;
@@ -108,6 +109,7 @@ void myGoodFeaturesToTrackFunction(){
 		}
 	}
 
+	//checks the (if) missed out right side last pixels by ixi blocks to also minimize the corner amount
 	for (p = 0; p < iMax; p += ((nms / 2) + (nms / 3) + adNumber)) {
 		float tempNumber = 0;
 		int tempX = 0, tempY = 0;
@@ -132,6 +134,7 @@ void myGoodFeaturesToTrackFunction(){
 		}
 	}
 
+	//checks the (if) missed out bottom right side last pixels by ixi blocks to also minimize the corner amount
 	float tempNumber = 0;
 	int tempX = 0, tempY = 0;
 	for (int k = iMax; k < srcGray.rows; k++) {
@@ -336,8 +339,8 @@ int main() {
 
 	bool personLeft = false, pointCreated = false;
 	
-	int pos = 20;
-	const int startingThreshold = pos + 50;
+	int pos = 1;
+	const int startingThreshold = pos + 5;
 	while ( pos < 795){
 		std::cout << "Frame: " << pos++ << std::endl;
 
@@ -355,20 +358,10 @@ int main() {
 
 		cv::Mat imgOut;
 		//cv::GaussianBlur(inputImg, inputImg,cv::Size(9,9),3,3);
-
-		cv::blur(inputImg, inputImg, cv::Size(7, 7));
 		
 		mog2BS->apply(inputImg, mog2Mask, 0.005);
 		cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 		cv::dilate(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(4, 4)));
-
-		namedWindow("image_clahe", WND_PROP_FULLSCREEN);
-		setWindowProperty("image_clahe", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-		imshow("image_clahe", inputImg);
-
-		namedWindow("mog2Mask", WND_PROP_FULLSCREEN);
-		setWindowProperty("mog2Mask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-		imshow("mog2Mask", mog2Mask);
 
 		if(pointFinished.size() < 1 && !personLeft) {
 			darkenMidMat(mog2Mask);
@@ -434,7 +427,10 @@ int main() {
 
 		if (pointFinished.size() > 0) {
 			//cv::blur(prevStaticGrayImg, prevStaticGrayImg, cv::Size(9, 9));
-			//cv::blur(grayImg, grayImg, cv::Size(5, 5));
+			cv::blur(grayImg, grayImg, cv::Size(5, 5));
+			namedWindow("grayImg", WND_PROP_FULLSCREEN);
+			setWindowProperty("grayImg", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
+			imshow("grayImg", grayImg);
 		}
 
 		if(pos >= startingThreshold && pointFinished.size() >= 1 && !personLeft){
