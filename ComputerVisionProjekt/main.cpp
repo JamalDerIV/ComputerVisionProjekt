@@ -5,7 +5,7 @@
 
 using namespace cv;
 cv::Mat src, srcGray;
-cv::Mat harrisDST, myHarrisCOPY, mC;
+cv::Mat harrisDST, myHarrisCOPY, myCorners;
 
 std::vector<Point2f> pointFinished;
 
@@ -54,6 +54,7 @@ void myGoodFeaturesToTrackFunction(){
 	std::vector<float> corners;
 	int iMax, jMax, m, n, o, p;
 	/*
+	* calculate the maximum row and cols our non maximum suppression can go, so we can still check the left out ones in the following for loops
 	iMax = srcGray.rows - (srcGray.rows % ((nms / 2) + (nms / 3) + adNumber));
 	jMax = srcGray.cols - (srcGray.cols % ((nms / 2) + (nms / 3) + adNumber));
 
@@ -157,10 +158,10 @@ void myGoodFeaturesToTrackFunction(){
 		}
 	}*/
 
-	//check if the corner is smaller than x
+	//check if the corner is smaller than qualityLevel * myHarrisMaxVal which is the global maximum from the arrray
 	for (int i = 0; i < srcGray.rows; i++){
 		for (int j = 0; j < srcGray.cols; j++){
-			if (mC.at<float>(i, j) > qualityLevel * myHarrisMaxVal){
+			if (myCorners.at<float>(i, j) > qualityLevel * myHarrisMaxVal){
 				//add the coordiantes to a vector
 				point0.push_back(Point2f(i, j));
 				amount++;
@@ -168,21 +169,23 @@ void myGoodFeaturesToTrackFunction(){
 		}
 	}
 
-	cv::Mat dw = cv::Mat::ones(cv::Size(srcGray.cols, srcGray.rows), CV_8UC1);
-	//check if the inner loops corner is within maxDistance and flag the smaller one
+	//creates a matrix full of ones in the size of srcGray
+	cv::Mat flagMatrix = cv::Mat::ones(cv::Size(srcGray.cols, srcGray.rows), CV_8UC1);
+
+	//check if the inner loops corner is within maxDistance and flags the smaller one with 0
 	if (!point0.empty()) {
 		for (int k = 0; k < point0.size() - 1;k++) {
-			if (dw.at<uchar>(point0[k].x, point0[k].y) != 0) {
+			if (flagMatrix.at<uchar>(point0[k].x, point0[k].y) != 0) {
 				for (int l = k + 1; l < point0.size(); l++) {
-					if (dw.at<uchar>(point0[k].x, point0[k].y) != 0) {
+					if (flagMatrix.at<uchar>(point0[k].x, point0[k].y) != 0) {
 						if (abs(point0[k].x - point0[l].x) < maxDistance && abs(point0[k].y - point0[l].y) < maxDistance) {
-							if (mC.at<float>(point0[k].x, point0[k].y) > mC.at<float>(point0[l].x, point0[l].y)) {
-								dw.at<uchar>(point0[l].x, point0[l].y) = 0;
-								dw.at<uchar>(point0[k].x, point0[k].y) = 1;
+							if (myCorners.at<float>(point0[k].x, point0[k].y) > myCorners.at<float>(point0[l].x, point0[l].y)) {
+								flagMatrix.at<uchar>(point0[l].x, point0[l].y) = 0;
+								flagMatrix.at<uchar>(point0[k].x, point0[k].y) = 1;
 							}
 							else {
-								dw.at<uchar>(point0[k].x, point0[k].y) = 0;
-								dw.at<uchar>(point0[l].x, point0[l].y) = 1;
+								flagMatrix.at<uchar>(point0[k].x, point0[k].y) = 0;
+								flagMatrix.at<uchar>(point0[l].x, point0[l].y) = 1;
 							}
 						}
 					}
@@ -191,20 +194,21 @@ void myGoodFeaturesToTrackFunction(){
 		}
 	}
 
+	//saves all the nonflagged corner in pointFinished
 	/*for (int k = 0; k < point0.size(); k++) {
 		if (dw.at<uchar>(point0[k].x, point0[k].y) != 0) {
 			pointFinished.push_back(point0[k]);
 		}
 	}*/
 
-	//save the biggest corner
+	//save the biggest corner of the array
 	float biggestCorner = 0;
 	int cornerX=0, cornerY=0;
 	bool newCorner = false;
 	for (int k = 0; k < point0.size(); k++) {
-		if (isBigger(mC.at<float>(point0[k].x, point0[k].y), biggestCorner)) {
+		if (isBigger(myCorners.at<float>(point0[k].x, point0[k].y), biggestCorner)) {
 			newCorner = true;
-			biggestCorner = mC.at<float>(point0[k].x, point0[k].y);
+			biggestCorner = myCorners.at<float>(point0[k].x, point0[k].y);
 			cornerX = point0[k].x;
 			cornerY = point0[k].y;
 		}
@@ -216,30 +220,33 @@ void myGoodFeaturesToTrackFunction(){
 	}
 }
 
+/* function to calculate a corner for every pixel in source image*/
 void cornerDetection(cv::Mat mat, cv::Mat harrisDST, cv::Mat mask) {
 	int apertureSize = 3;
 
-	//get the eigenValues
+	//get the eigenValues for the corner calculation
 	cornerEigenValsAndVecs(mat, harrisDST, blockSize, apertureSize);
 
 	//calculate fore every pixel a corner using eigenValues and the free parameter for the harris detector
-	mC = Mat(srcGray.size(), CV_32FC1);
+	myCorners = Mat(srcGray.size(), CV_32FC1);
 	for (int i = 0; i < srcGray.rows; i++) {
 		for (int j = 0; j < srcGray.cols; j++) {
+			//use the mask to ignore corners and set the ignores ones to 0
 			if (mask.at<uchar>(i, j) != 0) {
 				float lambda_1 = harrisDST.at<Vec6f>(i, j)[0];
 				float lambda_2 = harrisDST.at<Vec6f>(i, j)[1];
 
-				//für jeden pixel wird ein wert berechnet, der besagt ob ein corner vorhanden sein kann
-				mC.at<float>(i, j) = lambda_1 * lambda_2 - freeParameterHD * ((lambda_1 + lambda_2) * (lambda_1 + lambda_2));
+				//calculate the corner with the eigenvalues and the free parameter (same result as the harris corner detector)
+				myCorners.at<float>(i, j) = lambda_1 * lambda_2 - freeParameterHD * ((lambda_1 + lambda_2) * (lambda_1 + lambda_2));
 			}
 			else {
-				mC.at<float>(i, j) = 0;
+				myCorners.at<float>(i, j) = 0;
 			}
 		}
 	}
 
-	minMaxLoc(mC, &myHarrisMinVal, &myHarrisMaxVal);
+	//get the global minimum and maximum from the myCorners array
+	minMaxLoc(myCorners, &myHarrisMinVal, &myHarrisMaxVal);
 
 	myGoodFeaturesToTrackFunction();
 }
@@ -262,7 +269,6 @@ double iou(Rect boxGT, Rect boxPredicted) {
 }
 
 int main() {
-
 	cv::Ptr<BackgroundSubtractorMOG2> mog2BS = createBackgroundSubtractorMOG2();
 	
 	mog2BS->setShadowThreshold(0.86);
@@ -294,11 +300,15 @@ int main() {
 		std::cout << "Could not open Ground Truth file. Evaluation will be skipped." << std::endl;
 	}
 
-	// Meanshift Parameters
-	int width = 100;
-	int height = 180;
-	float scaleFactor = 1.2f;
+	std::ofstream ownFile;
+	ownFile.open("output\\ownEval.txt");
 
+	// Meanshift Parameters
+	int width = 135;
+	int height = 380;
+	float scaleFactor = 1.3f;
+
+	Rect cuttingSize;
 	Rect trackFrame(0, 0, width, height);
 	Mat roi, hsv_roi, mask, personMask;
 	int yOffset = 0, xOffset = 0;
@@ -355,9 +365,6 @@ int main() {
 			std::cout << "Could not read the image: " << inImgName.str() << std::endl;
 			return 1;
 		}
-
-		cv::Mat imgOut;
-		//cv::GaussianBlur(inputImg, inputImg,cv::Size(9,9),3,3);
 		
 		mog2BS->apply(inputImg, mog2Mask, 0.005);
 		cv::erode(mog2Mask, mog2Mask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
@@ -373,9 +380,6 @@ int main() {
 			cv::erode(finishedMask, finishedMask, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 			cv::dilate(finishedMask, finishedMask, getStructuringElement(MORPH_ELLIPSE, Size(6, 6)));
 
-			namedWindow("finishedMask", WND_PROP_FULLSCREEN);
-			setWindowProperty("finishedMask", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-			imshow("finishedMask", finishedMask);
 		}
 
 		prevGrayImg = inputImg.clone();
@@ -393,6 +397,9 @@ int main() {
 			cvtColor(prevStaticGrayImg, prevStaticGrayImg, COLOR_BGR2GRAY);
 			cornerDetection(prevStaticGrayImg, harrisDST, finishedMask);
 
+			//the official goodFeaturesToTrack function for comparing uses 
+			//goodFeaturesToTrack(prevStaticGrayImg, pointFinished, 1, 0.00001, 35, finishedMask, 200, true, 0.24);
+
 			if (pointFinished.size() > 0) {
 				if (pointFinished[0].y > mog2Mask.rows * 0.9) {
 					yOffset = height / 2;
@@ -409,13 +416,13 @@ int main() {
 				}
 			}
 		}
-			//goodFeaturesToTrack(prevStaticGrayImg, pointFinished, 1, 0.00001, 35, finishedMask, 200, true, 0.24);
-		//}
 
 		Mat grayImg;
 		cvtColor(inputImg, grayImg, COLOR_BGR2GRAY);
 		std::vector<uchar> status;
 		std::vector<float> err;
+
+		//set the bool personLeft to true if the optical flow leaves our frame
 		if (pointFinished.size() >= 1) {
 			pointCreated = true;
 			if (pointFinished[0].x < 0 || pointFinished[0].y < 0 || pointFinished[0].x > inputImg.cols || pointFinished[0].y > inputImg.rows) {
@@ -426,11 +433,8 @@ int main() {
 		}
 
 		if (pointFinished.size() > 0) {
-			//cv::blur(prevStaticGrayImg, prevStaticGrayImg, cv::Size(9, 9));
-			cv::blur(grayImg, grayImg, cv::Size(5, 5));
-			namedWindow("grayImg", WND_PROP_FULLSCREEN);
-			setWindowProperty("grayImg", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-			imshow("grayImg", grayImg);
+			//only used in sequences where the blur will have a better effect
+			//cv::blur(grayImg, grayImg, cv::Size(5, 5));
 		}
 
 		if(pos >= startingThreshold && pointFinished.size() >= 1 && !personLeft){
@@ -452,7 +456,7 @@ int main() {
 			int cutWidth = (width * scaleFactor + x >= mog2Mask.cols) ? (mog2Mask.cols - x): width*scaleFactor; 
 			int cutHeight = (height * scaleFactor + y >= mog2Mask.rows) ? (mog2Mask.rows - y): height*scaleFactor;
 			// cutting backProjectionMask and mog2Mask together in the given ROI
-			Rect cuttingSize = cv::Rect(x, y, cutWidth, cutHeight);
+			cuttingSize = cv::Rect(x, y, cutWidth, cutHeight);
 			Mat cutPerson = mog2Mask(cuttingSize);
 			Mat combinedMask = backProjectionMask(cuttingSize) | cutPerson;
 			personMask = Mat::zeros(mog2Mask.size(), mog2Mask.type());
@@ -469,14 +473,17 @@ int main() {
 			// while file has lines -> read line, calculate evaluation and draw rectangle 
 			if (gtfile.is_open()) {
 				Rect gt = Rect(bb_left, bb_top, bb_width, bb_height);
-				eval = iou(gt, trackFrame);
-				//rectangle(inputImg, gt, Scalar(0, 255, 0), 1);
+				// trackFrame  for MeanShift
+				// cuttingSize for BlackBox 
+				eval = iou(gt, cuttingSize);
+				rectangle(inputImg, gt, Scalar(0, 255, 0), 1);
 				gtfile >> frame >> id >> bb_left >> bb_top >> bb_width >> bb_height;
 				if (!gtfile) gtfile.close();
 			}
 			
 			// while either our box or the gt box is present we want to sum up total evaluation
 			if (!personLeft || gtfile.is_open()) {
+				ownFile << eval << std::endl;
 				std::cout << " Evaluation = " << eval << std::endl;
 				evalSum += eval;
 				evalIterations++;
@@ -520,9 +527,11 @@ int main() {
 		cv::cvtColor(lab_img, image_clahe, COLOR_Lab2BGR);
 		*/
 
-		namedWindow("Mog2 Background Substraction", WND_PROP_FULLSCREEN);
-		setWindowProperty("Mog2 Background Substraction", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
-		imshow("Mog2 Background Substraction", inputImg);
+		std::string name = pos_str;
+		imwrite("inputImg\\" + name + ".jpg", inputImg);
+		//if (!personMask.empty()) {
+		//	imwrite("personMask\\" + name + ".jpg", personMask);
+		//}
 		
 		int keyboard = waitKey();
 		if (keyboard == 'q' || keyboard == 27)
@@ -535,5 +544,6 @@ int main() {
 
 		cv::destroyAllWindows();
 	}
+	ownFile << "\t" << evalSum / evalIterations << std::endl;
 	return 0;
 }
