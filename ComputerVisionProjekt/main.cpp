@@ -24,11 +24,10 @@ public:
 
 int main() {
 	Detections (*gt)[200] = new Detections[600][200];
-	
 
 	// Reading (custom) gt file
-		//  -> the ',' seperator has been replaced with a ' ' whitespace
-	std::string line;
+	//  -> the ',' seperator has been replaced with a ' ' whitespace
+	/*std::string line;
 	std::ifstream gtfile("data\\data_m4\\1\\gt\\gt.txt");
 
 	while (std::getline(gtfile, line)) {
@@ -38,23 +37,12 @@ int main() {
 			break;
 		}
 		gt[frame][id].setData(bb_left, bb_top, bb_width, bb_height, x, y, z);
-
-		if (frame == 3 && id == 2) {
-			std::cout << gt[frame][id].left << " " << gt[frame][id].top << " " << gt[frame][id].width << " " << gt[frame][id].height << std::endl;
-		}
-		if (frame == 2 && id == 3) {
-			std::cout << gt[frame][id].left << " " << gt[frame][id].top << " " << gt[frame][id].width << " " << gt[frame][id].height << std::endl;
-		}
-
 	}
 	
-
 	if (!gtfile.is_open()) {
 		std::cout << "Could not open Ground Truth file. Evaluation will be skipped." << std::endl;
 	}
-	
-	//std::cout << sizeof(gt) << std::endl;
-
+	*/
 
 	/*for (int pos = 1; pos <= 1050; pos += 1) {
 		std::ostringstream in_img_name;
