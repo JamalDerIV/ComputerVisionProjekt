@@ -1,12 +1,23 @@
 #include <opencv2\opencv.hpp>
 #include <iostream>
+#include <Windows.h>
 
 using namespace cv;
 
+class Simple {
+public:
+	Simple() {
+		std::cout << "Constructed" << std::endl;
+	}
+	
+};
 
 int main() {
+	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050, "data\\data_m4\\1\\seqinfo.ini");
+	
+	Simple* pSimple = new Simple[5][20];
 
-
+	/*
 	for (int pos = 1; pos <= 1050; pos += 1) {
 		std::ostringstream in_img_name;
 		char pos_str[7]; 
@@ -36,5 +47,6 @@ int main() {
 
 		cv::destroyAllWindows();
 	}
+	*/
 	return 0;
 }
