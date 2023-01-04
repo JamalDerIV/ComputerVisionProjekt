@@ -26,6 +26,12 @@ public:
 		y = yC;
 		z = zC;
 	}
+
+	String print() {
+		std::ostringstream ret;
+		ret << left << " - " << top << " - " << width << " - " << height << " - " << visibility;
+		return ret.str();
+	}
 };
 
 class GroundTruth {
@@ -40,6 +46,12 @@ public:
 		x = xC;
 		y = yC;
 		z = zC;
+	}
+
+	String print() {
+		std::ostringstream ret;
+		ret << left << " - " << top << " - " << width << " - " << height;
+		return ret.str();
 	}
 };
 
