@@ -91,8 +91,8 @@ int main() {
 	const int totalIDs = 150;
 
 	GroundTruth *gt = new GroundTruth[totalIDs];
-	Detections *det = new Detections[totalIDs];
 	std::vector<TrackedObject> trackedObjects;
+	std::vector<Detections> det;
 
 	// Reading (custom) gt and det files
 	//  -> the ',' seperator has been replaced with a ' ' whitespace
@@ -115,13 +115,15 @@ int main() {
 			return 1;
 		}
 
+		det.clear();
+
 		// Reading detected values
-		nDetections = 0;
 		do {
 			float id, left, top, width, height, confidence, x, y, z;
 			detfile >> id >> left >> top >> width >> height >> confidence >> x >> y >> z;
-			det[nDetections].setData(left, top, width, height, confidence);
-			nDetections++;
+			Detections dett;
+			dett.setData(left, top, width, height, confidence);
+			det.push_back(dett);
 
 			if (detfile) {
 				detfile >> frame;
@@ -152,7 +154,7 @@ int main() {
 
 		// Hungarian Method
 		if (trackedObjects.size() == 0) {
-			for (int i = 0; i < nDetections; i++) {
+			for (int i = 0; i < det.size(); i++) {
 				TrackedObject a(det[i], trackedObjects.size() + 1);
 				trackedObjects.push_back(a);
 				//cv::putText(in_img, std::to_string(a.id), { a.getX(), a.getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
@@ -160,41 +162,70 @@ int main() {
 		}
 		else {
 			// nDetextions x trackedObjects
-			std::vector<std::vector<double>> iouMatrix(trackedObjects.size(), std::vector<double>(nDetections, 0));
+			std::vector<std::vector<double>> iouMatrix(trackedObjects.size(), std::vector<double>(det.size(), 0));
 			for (int t = 0; t < trackedObjects.size(); t++) {
-				for (int d = 0; d < nDetections; d++) {
+				for (int d = 0; d < det.size(); d++) {
 					iouMatrix.at(t).at(d) = iou(trackedObjects[t].det.getRect(), det[d].getRect());
 				}
 			}
 
-			for (int t = 0; t < iouMatrix.size(); t++) {
+			std::cout << det.size() << std::endl;
+
+			int b = 0;
+
+			for (int t = 0; t < iouMatrix.size()-b; t++) {
+				if (det.size() <= 0) {
+					break;
+				}
+
 				double highestValue = 0;
 				int pos = 0;
-				for (int d = 0; d < nDetections; d++) {
+				for (int d = 0; d < det.size(); d++) {
 					if (highestValue < iouMatrix.at(t).at(d)) {
 						highestValue = iouMatrix.at(t).at(d);
 						pos = d;
 					}
 				}
-				trackedObjects.at(t).det = det[pos];
-				for (int d = t; d < iouMatrix.size(); d++) {
-					iouMatrix.at(t).at(pos) = 0;
+
+				if (highestValue <= 0) {
+					continue;
 				}
 
+				trackedObjects.at(t).det = det[pos];
+
+				det[pos] = det[det.size() - 1];
+				b++;
+				
+				for (int d = t; d < iouMatrix.size(); d++) {
+					iouMatrix.at(t).at(pos) = iouMatrix.at(t).at(det.size()-1);
+				}
+				det.pop_back();
 			}
 			
+			std::cout << det.size() << std::endl;
+
+			for (int i = 0; i < det.size(); i++) {
+				
+				TrackedObject a(det[i], trackedObjects.size() + 1);
+				trackedObjects.push_back(a);
+				
+			}
 		}
 
+		
+
 		//draw detected
-		for (int i = 0; i < nDetections; i++) {
+		/*for (int i = 0; i < nDetections; i++) {
 			rectangle(in_img, det[i].getRect(), Scalar(0, 0, 255), 1);
 			//cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
-		}
+		}*/
 
 		//draw tracked Objects
 		for (int i = 0; i < trackedObjects.size(); i++) {
 			rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 255, 0), 1);
 			cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
+			std::cout << trackedObjects[i].det.getRect() << " | id: " << trackedObjects[i].id << std::endl;
+			
 		}
 
 
