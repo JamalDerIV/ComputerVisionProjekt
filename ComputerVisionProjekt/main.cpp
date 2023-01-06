@@ -37,13 +37,15 @@ public:
 
 class GroundTruth {
 public:
-	float left, top, width, height;
+	float left, top, width, height, confidence, visibility;
 
-	void setData(float l, float t, float w, float h) {
+	void setData(float l, float t, float w, float h, float c, float v) {
 		left = l;
 		top = t;
 		width = w;
 		height = h;
+		confidence = c;
+		visibility = v;
 	}
 
 	String print() {
@@ -134,9 +136,9 @@ int main() {
 
 		nGroundtruths = 0;
 		do {
-			float id, left, top, width, height, x, y, z;
-			gtfile >> id >> left >> top >> width >> height >> x >> y >> z;
-			gt[nGroundtruths].setData(left, top, width, height);
+			float id, left, top, width, height, confidence, tag_class, visibility;
+			gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility;
+			if (tag_class == 1) gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
 			nGroundtruths++;
 
 			if (gtfile) {
