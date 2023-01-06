@@ -14,22 +14,19 @@ using namespace cv;
 
 class Detections {
 public:
-	float left, top, width, height, visibility, x, y, z;
+	float left, top, width, height, confidence;
 
-	void setData(float l, float t, float w, float h, float v, float xC, float yC, float zC) {
+	void setData(float l, float t, float w, float h, float c) {
 		left = l;
 		top = t;
 		width = w;
 		height = h;
-		visibility = v;
-		x = xC;
-		y = yC;
-		z = zC;
+		confidence = c;
 	}
 
 	String print() {
 		std::ostringstream ret;
-		ret << left << " - " << top << " - " << width << " - " << height << " - " << visibility;
+		ret << left << " - " << top << " - " << width << " - " << height << " - " << confidence;
 		return ret.str();
 	}
 
@@ -40,16 +37,13 @@ public:
 
 class GroundTruth {
 public:
-	float left, top, width, height, x, y, z;
+	float left, top, width, height;
 
-	void setData(float l, float t, float w, float h, float xC, float yC, float zC) {
+	void setData(float l, float t, float w, float h) {
 		left = l;
 		top = t;
 		width = w;
 		height = h;
-		x = xC;
-		y = yC;
-		z = zC;
 	}
 
 	String print() {
@@ -114,9 +108,7 @@ int main() {
 		char pos_str[7]; 
 		sprintf_s(pos_str, "%0.6d", pos);
 		in_img_name <<  filepath+"img1\\"<< pos_str <<".jpg";
-		
 		cv::Mat in_img = cv::imread(in_img_name.str(), cv::IMREAD_COLOR);
-
 		if (in_img.empty())
 		{
 			std::cout << "Could not read the image: " << in_img_name.str() << std::endl;
@@ -126,9 +118,9 @@ int main() {
 		// Reading detected values
 		nDetections = 0;
 		do {
-			float id, left, top, width, height, visibility, x, y, z;
-			detfile >> id >> left >> top >> width >> height >> visibility >> x >> y >> z;
-			det[nDetections].setData(left, top, width, height, visibility, x, y, z);
+			float id, left, top, width, height, confidence, x, y, z;
+			detfile >> id >> left >> top >> width >> height >> confidence >> x >> y >> z;
+			det[nDetections].setData(left, top, width, height, confidence);
 			nDetections++;
 
 			if (detfile) {
@@ -144,7 +136,7 @@ int main() {
 		do {
 			float id, left, top, width, height, x, y, z;
 			gtfile >> id >> left >> top >> width >> height >> x >> y >> z;
-			gt[nGroundtruths].setData(left, top, width, height, x, y, z);
+			gt[nGroundtruths].setData(left, top, width, height);
 			nGroundtruths++;
 
 			if (gtfile) {
@@ -161,23 +153,24 @@ int main() {
 			rectangle(in_img, Rect(det[i].left, det[i].top, det[i].width, det[i].height), Scalar(0, 255, 0), 1);
 		}
 
-		//save detections
-		/*
-		alle Objekte die iou größer als 0.7 haben bekommen die selbe ID -> noch falsch
-		trackedObjects ist am Anfang 0 und wird nei aufgerufen
-		*/
-		for (int i = 0; i < nDetections; i++) {
-			TrackedObject a(det[i], trackedObjects.size() + 1);
-			for (int j = 0; j < trackedObjects.size(); j++) {
-				if (iou(trackedObjects[j].det.getRect(), det[i].getRect()) > 0.7) {
-					trackedObjects[j].det = det[i];
-					cv::putText(in_img, std::to_string(trackedObjects[j].id), { trackedObjects[j].getX(), trackedObjects[j].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
-				}
-				else {
-					trackedObjects.push_back(a);
-					cv::putText(in_img, std::to_string(a.id), { a.getX(), a.getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
+		// Hungarian Method
+		if (trackedObjects.size() == 0) {
+			for (int i = 0; i < nDetections; i++) {
+				TrackedObject a(det[i], trackedObjects.size() + 1);
+				trackedObjects.push_back(a);
+				cv::putText(in_img, std::to_string(a.id), { a.getX(), a.getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
+			}
+		}
+		else {
+			// nDetextions x trackedObjects
+			std::vector<std::vector<double>> iouMatrix(nDetections, std::vector<double>(trackedObjects.size(), 0));
+			for (int d = 0; d < nDetections; d++) { 
+				for (int t = 0; t < trackedObjects.size(); t++) { 
+					iouMatrix.at(d).at(t) = iou(trackedObjects[t].det.getRect(), det[d].getRect());
+					cv::putText(in_img, std::to_string(trackedObjects[t].id), { trackedObjects[t].getX(), trackedObjects[t].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
 				}
 			}
+			
 		}
 
 		//draw groundtruths
