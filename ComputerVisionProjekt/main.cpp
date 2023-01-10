@@ -59,9 +59,12 @@ class TrackedObject {
 public:
 	Detections det;
 	int id, cutsRect;
-	TrackedObject(Detections d, int i,int c) {
+	Mat personTemplate;
+
+	TrackedObject(Detections d, int i, Mat t, int c) {
 		det = d;
 		id = i;
+		personTemplate = t;
 		cutsRect = c;
 	}
 	int getX() {
@@ -217,13 +220,51 @@ int main() {
 
 		} while (frame == pos);
 
-		// push detections into trackedObjects
-		if (trackedObjects.size() <= 0) {
+		if (pos <= 1) {
+			// push detections into trackedObjects
 			for (int i = 0; i < det.size(); i++) {
-				TrackedObject a(det[i], trackedObjects.size() + 1, 0);
+				TrackedObject a(det[i], trackedObjects.size() + 1, in_img(det[i].getRect()), 0);
 				trackedObjects.push_back(a);
 				//cv::putText(in_img, std::to_string(a.id), { a.getX(), a.getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
 			}
+		}
+
+		// TESTING Jjjjjjj
+		int templs[] = { TM_CCOEFF, TM_CCOEFF_NORMED, TM_CCORR, TM_CCORR_NORMED, TM_SQDIFF, TM_SQDIFF_NORMED };
+		Mat t_img = trackedObjects[0].personTemplate;
+		Mat result;
+		int r_cols = in_img.cols - t_img.cols + 1;
+		int r_rows = in_img.rows - t_img.rows + 1;
+		result.create(r_rows, r_cols, CV_32FC1);
+		for (int i = 0; i < 6; i++) {
+			matchTemplate(in_img, t_img, result, templs[i]);
+			normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+			double minVal; double maxVal; Point minLoc; Point maxLoc;
+			Point matchLoc;
+			minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
+			if (templs[i] == TM_SQDIFF || templs[i] == TM_SQDIFF_NORMED)
+			{
+				matchLoc = minLoc;
+			}
+			else
+			{
+				matchLoc = maxLoc;
+			}
+			Mat img_display = in_img.clone();
+			rectangle(img_display, matchLoc, Point(matchLoc.x + t_img.cols, matchLoc.y + t_img.rows), Scalar::all(0), 2, 8, 0);
+			rectangle(result, matchLoc, Point(matchLoc.x + t_img.cols, matchLoc.y + t_img.rows), Scalar::all(0), 2, 8, 0);
+
+			std::cout << templs[i] << std::endl;
+			imshow("Fuck show", img_display);
+
+			// do 10 steps before waiting again 
+			if (pos % 1 == 0) {
+				int wait = cv::waitKey(0);
+				if (wait == 27) {
+					break; // ESC Key
+				}
+			}
+
 		}
 
 		//draw tracked Objects
@@ -249,7 +290,6 @@ int main() {
 		
 
 		imshow("Image", in_img);
-
 		// do 10 steps before waiting again 
 		if (pos % 1 == 0) {
 			int wait = cv::waitKey(0);
