@@ -33,6 +33,19 @@ public:
 	Rect getRect() {
 		return Rect(left, top, width, height);
 	}
+
+	Rect roiRect() {
+		float scale = 0.1;
+		//float l = left * (1 - scale);
+		//float t = top  * (1 - scale);
+		//float w = width * (1 + scale);
+		//float h = height * (1 + scale);
+		float l = left - width;
+		float t = top  - height/2;
+		float w = width * 3;
+		float h = height * 2;
+		return Rect(l, t, w, h);
+	}
 };
 
 class GroundTruth {
@@ -59,12 +72,10 @@ class TrackedObject {
 public:
 	Detections det;
 	int id, cutsRect;
-	Mat personTemplate;
 
-	TrackedObject(Detections d, int i, Mat t, int c) {
+	TrackedObject(Detections d, int i,  int c) {
 		det = d;
 		id = i;
-		personTemplate = t;
 		cutsRect = c;
 	}
 	int getX() {
@@ -74,6 +85,24 @@ public:
 		return int(det.top);
 	}
 };
+
+// Returns 1 if template 1 has a better fit, 2 for template 2 and 0 if something went wrong
+int findMatchingTemplate(Mat roi, Mat templ1, Mat templ2) {
+	Mat result1(roi.cols - templ1.cols + 1, roi.rows - templ1.rows + 1, CV_32FC1);
+	Mat result2(roi.cols - templ2.cols + 1, roi.rows - templ2.rows + 1, CV_32FC1);
+	matchTemplate(roi, templ1, result1, TM_CCOEFF_NORMED);
+	matchTemplate(roi, templ2, result2, TM_CCOEFF_NORMED);
+	double minVal, val1, val2; // for SQDIFF / SQDIFF NORM use minimum, else maximum
+	Point minLoc, maxLoc, matchLoc;
+	minMaxLoc(result1, &minVal, &val1, &minLoc, &maxLoc, Mat());
+	std::cout << "Best Value 1: " << val1 << std::endl;
+	minMaxLoc(result2, &minVal, &val2, &minLoc, &maxLoc, Mat());
+	std::cout << "Best Value 2: " << val2 << std::endl;
+
+	imshow("roi", roi);
+	if (val1 > val2) return 1;
+	return 2; //Point(matchLoc.x + templ1.cols, matchLoc.y + templ1.rows);
+}
 
 double iou(Rect boxGT, Rect boxPredicted) {
 	int xA = max(boxGT.x, boxPredicted.x),
@@ -131,7 +160,6 @@ void hungarian(Mat values, int tries) {
 			everyRowZeros = false;
 		}
 	}
-	
 
 	if (!everyRowZeros && tries < 3) {
 		hungarian(values, tries);
@@ -161,6 +189,7 @@ int main() {
 	GroundTruth *gt = new GroundTruth[totalIDs];
 	std::vector<TrackedObject> trackedObjects;
 	std::vector<Detections> det;
+	Mat lastFrame;
 
 	// Reading (custom) gt and det files
 	//  -> the ',' seperator has been replaced with a ' ' whitespace
@@ -223,48 +252,22 @@ int main() {
 		if (pos <= 1) {
 			// push detections into trackedObjects
 			for (int i = 0; i < det.size(); i++) {
-				TrackedObject a(det[i], trackedObjects.size() + 1, in_img(det[i].getRect()), 0);
+				TrackedObject a(det[i], trackedObjects.size() + 1, 0);
 				trackedObjects.push_back(a);
 				//cv::putText(in_img, std::to_string(a.id), { a.getX(), a.getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
 			}
 		}
+		
+		lastFrame = in_img.clone();
+		if (pos > 2) {
+			Detections d_test;
+			d_test.setData(861.f, 118.f, 79.f, 178.f, 0.4f);
 
-		// TESTING Jjjjjjj
-		int templs[] = { TM_CCOEFF, TM_CCOEFF_NORMED, TM_CCORR, TM_CCORR_NORMED, TM_SQDIFF, TM_SQDIFF_NORMED };
-		Mat t_img = trackedObjects[0].personTemplate;
-		Mat result;
-		int r_cols = in_img.cols - t_img.cols + 1;
-		int r_rows = in_img.rows - t_img.rows + 1;
-		result.create(r_rows, r_cols, CV_32FC1);
-		for (int i = 0; i < 6; i++) {
-			matchTemplate(in_img, t_img, result, templs[i]);
-			normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
-			double minVal; double maxVal; Point minLoc; Point maxLoc;
-			Point matchLoc;
-			minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
-			if (templs[i] == TM_SQDIFF || templs[i] == TM_SQDIFF_NORMED)
-			{
-				matchLoc = minLoc;
-			}
-			else
-			{
-				matchLoc = maxLoc;
-			}
-			Mat img_display = in_img.clone();
-			rectangle(img_display, matchLoc, Point(matchLoc.x + t_img.cols, matchLoc.y + t_img.rows), Scalar::all(0), 2, 8, 0);
-			rectangle(result, matchLoc, Point(matchLoc.x + t_img.cols, matchLoc.y + t_img.rows), Scalar::all(0), 2, 8, 0);
+			imshow("tO 10", lastFrame(trackedObjects[9].det.getRect()));
+			imshow("tO 25", lastFrame(trackedObjects[14].det.getRect()));
 
-			std::cout << templs[i] << std::endl;
-			imshow("Fuck show", img_display);
-
-			// do 10 steps before waiting again 
-			if (pos % 1 == 0) {
-				int wait = cv::waitKey(0);
-				if (wait == 27) {
-					break; // ESC Key
-				}
-			}
-
+			int res = findMatchingTemplate(in_img(d_test.roiRect()), lastFrame(trackedObjects[9].det.getRect()), lastFrame(trackedObjects[14].det.getRect()));
+			std::cout << "winner : : : " << res << std::endl;
 		}
 
 		//draw tracked Objects
