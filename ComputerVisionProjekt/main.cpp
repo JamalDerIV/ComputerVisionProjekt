@@ -34,17 +34,11 @@ public:
 		return Rect(left, top, width, height);
 	}
 
-	Rect roiRect() {
-		float scale = 0.1;
-		//float l = left * (1 - scale);
-		//float t = top  * (1 - scale);
-		//float w = width * (1 + scale);
-		//float h = height * (1 + scale);
-		float l = left - width;
-		float t = top  - height/2;
-		float w = width * 3;
-		float h = height * 2;
-		return Rect(l, t, w, h);
+	// Reduce this Objects Rect, to fit into targetRect
+	Rect getReducedRect(Rect targetRect) {
+		float l = left + ((width - targetRect.width) / 2);
+		float t = top + ((height - targetRect.height) / 2);
+		return Rect(l, t, targetRect.width, targetRect.height);
 	}
 };
 
@@ -86,22 +80,18 @@ public:
 	}
 };
 
-// Returns 1 if template 1 has a better fit, 2 for template 2 and 0 if something went wrong
-int findMatchingTemplate(Mat roi, Mat templ1, Mat templ2) {
+// Returns 0 if template 1 has a better fit and 1 if template 2 is better
+int compareTemplates(Mat roi, Mat templ1, Mat templ2) {
 	Mat result1(roi.cols - templ1.cols + 1, roi.rows - templ1.rows + 1, CV_32FC1);
 	Mat result2(roi.cols - templ2.cols + 1, roi.rows - templ2.rows + 1, CV_32FC1);
-	matchTemplate(roi, templ1, result1, TM_CCOEFF_NORMED);
+	matchTemplate(roi, templ1, result1, TM_CCOEFF_NORMED);  
 	matchTemplate(roi, templ2, result2, TM_CCOEFF_NORMED);
 	double minVal, val1, val2; // for SQDIFF / SQDIFF NORM use minimum, else maximum
 	Point minLoc, maxLoc, matchLoc;
 	minMaxLoc(result1, &minVal, &val1, &minLoc, &maxLoc, Mat());
-	std::cout << "Best Value 1: " << val1 << std::endl;
 	minMaxLoc(result2, &minVal, &val2, &minLoc, &maxLoc, Mat());
-	std::cout << "Best Value 2: " << val2 << std::endl;
-
-	imshow("roi", roi);
-	if (val1 > val2) return 1;
-	return 2; //Point(matchLoc.x + templ1.cols, matchLoc.y + templ1.rows);
+	if (val1 > val2) return 0;
+	return 1; //Point(matchLoc.x + templ1.cols, matchLoc.y + templ1.rows);
 }
 
 double iou(Rect boxGT, Rect boxPredicted) {
@@ -259,15 +249,18 @@ int main() {
 		}
 		
 		lastFrame = in_img.clone();
-		if (pos > 2) {
+		if (pos >= 2) {
 			Detections d_test;
-			d_test.setData(861.f, 118.f, 79.f, 178.f, 0.4f);
-
-			imshow("tO 10", lastFrame(trackedObjects[9].det.getRect()));
-			imshow("tO 25", lastFrame(trackedObjects[14].det.getRect()));
-
-			int res = findMatchingTemplate(in_img(d_test.roiRect()), lastFrame(trackedObjects[9].det.getRect()), lastFrame(trackedObjects[14].det.getRect()));
-			std::cout << "winner : : : " << res << std::endl;
+			d_test.setData(880.f, 125.f, 55.f, 160.f, 0.4f);
+			// if 2 tOs are close to each other and a det is lost in next frame, we compare the det to both tOs to find out which fits better 
+			if (compareTemplates(in_img(d_test.getRect()),
+				lastFrame(trackedObjects[9].det.getReducedRect(d_test.getRect())),
+				lastFrame(trackedObjects[14].det.getReducedRect(d_test.getRect())))) {
+				std::cout << "Object 15 fits." << std::endl;
+			}
+			else {
+				std::cout << "Object 10 fits." << std::endl;
+			}
 		}
 
 		//draw tracked Objects
