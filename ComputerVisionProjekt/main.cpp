@@ -42,6 +42,10 @@ public:
 	}
 };
 
+bool compareDetections(Detections d1, Detections d2) {
+	return d1.getRect().area() < d2.getRect().area();
+}
+
 class GroundTruth {
 public:
 	float left, top, width, height, confidence, visibility;
@@ -112,7 +116,7 @@ double iou(Rect boxGT, Rect boxPredicted) {
 
 void hungarian(Mat values, int tries) {
 	tries++;
-	std::cout << values << std::endl;
+	//std::cout << values << std::endl;
 
 	for (int i = 0; i < values.rows; i++) {
 		int minNumber = 100;
@@ -135,7 +139,7 @@ void hungarian(Mat values, int tries) {
 		}
 	}
 
-	std::cout << values << std::endl;
+	//std::cout << values << std::endl;
 
 	bool everyRowZeros = true;
 	for (int i = 0; i < values.rows; i++) {
@@ -145,7 +149,7 @@ void hungarian(Mat values, int tries) {
 				countZeros++;
 			}
 		}
-		std::cout << "Try: " << tries << " | " << i+1 << ". row zeros: " << countZeros << std::endl;
+		//std::cout << "Try: " << tries << " | " << i+1 << ". row zeros: " << countZeros << std::endl;
 		if (countZeros == 0) {
 			everyRowZeros = false;
 		}
@@ -186,6 +190,9 @@ int main() {
 	std::ifstream detfile(filepath+"det\\det.txt");
 	std::ifstream gtfile(filepath + "gt\\gt_sorted.txt");
 	int frame, nDetections = 0, nGroundtruths = 0;
+	// lower/higher percentage border for Detections
+	// this is applyed to the Median Detection
+	float lower_p = 0.3, higher_p = 2;
 
 	if (detfile >> frame);
 	if (gtfile >> frame);
@@ -202,7 +209,7 @@ int main() {
 			return 1;
 		}
 
-		det.clear();
+		det.clear();         
 
 		// Reading detected values
 		do {
@@ -223,6 +230,23 @@ int main() {
 			
 		} while (frame == pos);
 
+		// filter out to big/small detections
+		std::sort(det.begin(), det.end(), compareDetections);
+		int median = det[(det.size() / 2) + 1].getRect().area();
+		std::vector<Detections> temp_det;
+		for (int d = 0; d < det.size(); d++) {
+			if (det[d].getRect().area() >= median * lower_p
+				&& det[d].getRect().area() <= median * higher_p)
+			{
+				temp_det.push_back(det[d]);
+			}
+		}
+		det.clear();
+		det = std::vector<Detections>(temp_det.size());
+		std::copy(temp_det.begin(), temp_det.end(), det.begin());
+		temp_det.clear();
+
+		//Reading Groundtruth values
 		nGroundtruths = 0;
 		do {
 			float id, left, top, width, height, confidence, tag_class, visibility;
@@ -239,8 +263,8 @@ int main() {
 
 		} while (frame == pos);
 
+		// push detections into trackedObjects
 		if (pos <= 1) {
-			// push detections into trackedObjects
 			for (int i = 0; i < det.size(); i++) {
 				TrackedObject a(det[i], trackedObjects.size() + 1, 0);
 				trackedObjects.push_back(a);
