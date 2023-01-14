@@ -176,8 +176,10 @@ void calcMatrix(std::vector<TrackedObject> trackedObjects, std::vector<Detection
 }
 
 int main() {
+	const int dataset = 2;
 	String filepath("data\\data_m4\\2\\");
-	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050, "data\\data_m4\\2\\seqinfo.ini");
+	std::ostringstream seqinfoPath; seqinfoPath << "data\\data_m4\\" << dataset << "\\seqinfo.ini";
+	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050,  seqinfoPath.str().c_str());
 	const int totalIDs = 150;
 
 	GroundTruth *gt = new GroundTruth[totalIDs];
@@ -249,9 +251,16 @@ int main() {
 		//Reading Groundtruth values
 		nGroundtruths = 0;
 		do {
-			float id, left, top, width, height, confidence, tag_class, visibility;
-			gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility;
-			if (tag_class == 1) gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
+			float id, left, top, width, height, confidence, tag_class, visibility, z;
+			if (dataset == 5) { 
+				gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility >> z;
+				gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
+			}
+			else {
+				gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility;
+				if (tag_class == 1) gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
+			}
+			
 			nGroundtruths++;
 
 			if (gtfile) {
@@ -273,7 +282,7 @@ int main() {
 		}
 		
 		lastFrame = in_img.clone();
-		if (pos >= 2) {
+		if (pos >= 2 && dataset == 2) {
 			Detections d_test;
 			d_test.setData(880.f, 125.f, 55.f, 160.f, 0.4f);
 			// if 2 tOs are close to each other and a det is lost in next frame, we compare the det to both tOs to find out which fits better 
@@ -294,7 +303,7 @@ int main() {
 			//std::cout << trackedObjects[i].det.getRect() << " | id: " << trackedObjects[i].id << std::endl;
 			
 		}
-		
+		std::cout << "312" << std::endl;
 		if (pos >= 2) {
 			calcMatrix(trackedObjects, det); 
 		}
