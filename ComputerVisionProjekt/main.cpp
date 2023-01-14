@@ -82,6 +82,19 @@ public:
 	int getY() {
 		return int(det.top);
 	}
+
+	// returns <object id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <confidence>
+	String getOutput() {
+		std::ostringstream ret;
+		ret << id << " " 
+			<< det.left << " " 
+			<< det.top << " " 
+			<< det.width << " " 
+			<< det.height << " " 
+			<< det.confidence;
+		return ret.str();
+	}
+
 };
 
 // Returns 0 if template 1 has a better fit and 1 if template 2 is better
@@ -198,6 +211,10 @@ int main() {
 
 	if (detfile >> frame);
 	if (gtfile >> frame);
+
+	// Writing tracked Object into file 
+	std::ofstream outputFile;
+	outputFile.open(filepath + "trackedOutput.txt");
 	
 	for (int pos = 1; pos <= seqLength; pos += 1) {
 		std::ostringstream in_img_name;
@@ -303,7 +320,7 @@ int main() {
 			//std::cout << trackedObjects[i].det.getRect() << " | id: " << trackedObjects[i].id << std::endl;
 			
 		}
-		std::cout << "312" << std::endl;
+
 		if (pos >= 2) {
 			calcMatrix(trackedObjects, det); 
 		}
@@ -326,6 +343,10 @@ int main() {
 				break; // ESC Key
 			}
 		}
+
+		for (int i = 0; i < trackedObjects.size(); i++)
+			// <frame number>, tracked output... , <x>, <y>, <z>
+			outputFile << pos << ' ' << trackedObjects[i].getOutput() << " -1 -1 -1" << std::endl;
 
 		cv::destroyAllWindows();
 	}
