@@ -45,19 +45,17 @@ public:
 		return int(top);
 	}
 
-	Rect roiRect() {
-		float scale = 0.1;
-		//float l = left * (1 - scale);
-		//float t = top  * (1 - scale);
-		//float w = width * (1 + scale);
-		//float h = height * (1 + scale);
-		float l = left - width;
-		float t = top  - height/2;
-		float w = width * 3;
-		float h = height * 2;
-		return Rect(l, t, w, h);
+	// Reduce this Objects Rect, to fit into targetRect
+	Rect getReducedRect(Rect targetRect) {
+		float l = left + ((width - targetRect.width) / 2);
+		float t = top + ((height - targetRect.height) / 2);
+		return Rect(l, t, targetRect.width, targetRect.height);
 	}
 };
+
+bool compareDetections(Detections d1, Detections d2) {
+	return d1.getRect().area() < d2.getRect().area();
+}
 
 class GroundTruth {
 public:
@@ -101,24 +99,33 @@ public:
 	void update(int up) {
 		updated = up;
 	}
+
+	// returns <object id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <confidence>
+	String getOutput() {
+		std::ostringstream ret;
+		ret << id << " " 
+			<< det.left << " " 
+			<< det.top << " " 
+			<< det.width << " " 
+			<< det.height << " " 
+			<< det.confidence;
+		return ret.str();
+	}
+
 };
 
-// Returns 1 if template 1 has a better fit, 2 for template 2 and 0 if something went wrong
-int findMatchingTemplate(Mat roi, Mat templ1, Mat templ2) {
+// Returns 0 if template 1 has a better fit and 1 if template 2 is better
+int compareTemplates(Mat roi, Mat templ1, Mat templ2) {
 	Mat result1(roi.cols - templ1.cols + 1, roi.rows - templ1.rows + 1, CV_32FC1);
 	Mat result2(roi.cols - templ2.cols + 1, roi.rows - templ2.rows + 1, CV_32FC1);
-	matchTemplate(roi, templ1, result1, TM_CCOEFF_NORMED);
+	matchTemplate(roi, templ1, result1, TM_CCOEFF_NORMED);  
 	matchTemplate(roi, templ2, result2, TM_CCOEFF_NORMED);
 	double minVal, val1, val2; // for SQDIFF / SQDIFF NORM use minimum, else maximum
 	Point minLoc, maxLoc, matchLoc;
 	minMaxLoc(result1, &minVal, &val1, &minLoc, &maxLoc, Mat());
-	std::cout << "Best Value 1: " << val1 << std::endl;
 	minMaxLoc(result2, &minVal, &val2, &minLoc, &maxLoc, Mat());
-	std::cout << "Best Value 2: " << val2 << std::endl;
-
-	imshow("roi", roi);
-	if (val1 > val2) return 1;
-	return 2; //Point(matchLoc.x + templ1.cols, matchLoc.y + templ1.rows);
+	if (val1 > val2) return 0;
+	return 1; //Point(matchLoc.x + templ1.cols, matchLoc.y + templ1.rows);
 }
 
 double iou(Rect boxGT, Rect boxPredicted) {
@@ -223,7 +230,7 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 
 void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections) {
 	tries++;
-	std::cout << values << std::endl;
+	//std::cout << values << std::endl;
 
 	for (int i = 0; i < values.rows; i++) {
 		int minNumber = 100;
@@ -243,7 +250,7 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 		}
 	}
 
-	std::cout << values << std::endl;
+	//std::cout << values << std::endl;
 
 	for (int i = 0; i < values.rows; i++) {
 		int amount = 0, position = 0;
@@ -329,7 +336,7 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 				countZeros++;
 			}
 		}
-		std::cout << "Try: " << tries << " | " << i+1 << ". row zeros: " << countZeros << std::endl;
+		//std::cout << "Try: " << tries << " | " << i+1 << ". row zeros: " << countZeros << std::endl;
 		if (countZeros == 0) {
 			everyRowZeros = false;
 		}
@@ -342,8 +349,10 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 }
 
 int main() {
-	String filepath("data\\data_m4\\1\\");
-	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050, "data\\data_m4\\1\\seqinfo.ini");
+	const int dataset = 2;
+	String filepath("data\\data_m4\\2\\");
+	std::ostringstream seqinfoPath; seqinfoPath << "data\\data_m4\\" << dataset << "\\seqinfo.ini";
+	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050,  seqinfoPath.str().c_str());
 	const int totalIDs = 150;
 
 	GroundTruth *gt = new GroundTruth[totalIDs];
@@ -356,9 +365,16 @@ int main() {
 	std::ifstream detfile(filepath+"det\\det.txt");
 	std::ifstream gtfile(filepath + "gt\\gt_sorted.txt");
 	int frame, nDetections = 0, nGroundtruths = 0;
+	// lower/higher percentage border for Detections
+	// this is applyed to the Median Detection
+	float lower_p = 0.3, higher_p = 2;
 
 	if (detfile >> frame);
 	if (gtfile >> frame);
+
+	// Writing tracked Object into file 
+	std::ofstream outputFile;
+	outputFile.open(filepath + "trackedOutput.txt");
 	
 	for (int pos = 1; pos <= seqLength; pos += 1) {
 		std::ostringstream in_img_name;
@@ -395,11 +411,35 @@ int main() {
 			
 		} while (frame == pos);
 
+		// filter out to big/small detections
+		std::sort(det.begin(), det.end(), compareDetections);
+		int median = det[(det.size() / 2) + 1].getRect().area();
+		std::vector<Detections> temp_det;
+		for (int d = 0; d < det.size(); d++) {
+			if (det[d].getRect().area() >= median * lower_p
+				&& det[d].getRect().area() <= median * higher_p)
+			{
+				temp_det.push_back(det[d]);
+			}
+		}
+		det.clear();
+		det = std::vector<Detections>(temp_det.size());
+		std::copy(temp_det.begin(), temp_det.end(), det.begin());
+		temp_det.clear();
+
+		//Reading Groundtruth values
 		nGroundtruths = 0;
 		do {
-			float id, left, top, width, height, confidence, tag_class, visibility;
-			gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility;
-			if (tag_class == 1) gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
+			float id, left, top, width, height, confidence, tag_class, visibility, z;
+			if (dataset == 5) { 
+				gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility >> z;
+				gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
+			}
+			else {
+				gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility;
+				if (tag_class == 1) gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
+			}
+			
 			nGroundtruths++;
 
 			if (gtfile) {
@@ -411,27 +451,14 @@ int main() {
 
 		} while (frame == pos);
 
+		// push detections into trackedObjects
 		if (pos <= 1) {
-			// push detections into trackedObjects
 			for (int i = 0; i < det.size(); i++) {
 				TrackedObject a(det[i], trackedObjects.size() + 1, 0, 0);
 				trackedObjects.push_back(a);
 				//cv::putText(in_img, std::to_string(a.id), { a.getX(), a.getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
 			}
 		}
-		
-		/*lastFrame = in_img.clone();
-		if (pos > 2) {
-			Detections d_test;
-			d_test.setData(861.f, 118.f, 79.f, 178.f, 0.4f, 0);
-
-			imshow("tO 10", lastFrame(trackedObjects[9].det.getRect()));
-			imshow("tO 25", lastFrame(trackedObjects[14].det.getRect()));
-
-			int res = findMatchingTemplate(in_img(d_test.roiRect()), lastFrame(trackedObjects[9].det.getRect()), lastFrame(trackedObjects[14].det.getRect()));
-			std::cout << "winner : : : " << res << std::endl;
-		}*/
-
 
 		for (int i = 0; i < det.size(); i++) {
 			rectangle(imgCopy, det[i].getRect(), Scalar(255, 0, 0), 1);
@@ -443,6 +470,22 @@ int main() {
 		if (pos >= 2) {
 			Mat values = calcMatrix(trackedObjects, det);
 			hungarian(values, 0, trackedObjects, det);
+		}
+
+		lastFrame = in_img.clone();
+		if (pos >= 2 && dataset == 2) {
+			Detections d_test;
+			d_test.setData(880.f, 125.f, 55.f, 160.f, 0.4f,0);
+			// if 2 tOs are close to each other and a det is lost in next frame, we compare the det to both tOs to find out which fits better 
+			if (compareTemplates(in_img(d_test.getRect()),
+				lastFrame(trackedObjects[9].det.getReducedRect(d_test.getRect())),
+				lastFrame(trackedObjects[14].det.getReducedRect(d_test.getRect())))) {
+				std::cout << "Object 15 fits." << std::endl;
+			}
+			else {
+				std::cout << "Object 10 fits." << std::endl;
+			}
+
 		}
 
 
@@ -483,6 +526,10 @@ int main() {
 				break; // ESC Key
 			}
 		}
+
+		for (int i = 0; i < trackedObjects.size(); i++)
+			// <frame number>, tracked output... , <x>, <y>, <z>
+			outputFile << pos << ' ' << trackedObjects[i].getOutput() << " -1 -1 -1" << std::endl;
 
 		cv::destroyAllWindows();
 	}
