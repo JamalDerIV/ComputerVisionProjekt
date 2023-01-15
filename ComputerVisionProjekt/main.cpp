@@ -69,18 +69,30 @@ public:
 class TrackedObject {
 public:
 	Detections det;
+	Detections prevDet;
+	std::vector<Point> tlPoints;
 	int id, cutsRect;
 
 	TrackedObject(Detections d, int i,  int c) {
 		det = d;
+		prevDet = d;
 		id = i;
 		cutsRect = c;
+		tlPoints.push_back(det.getRect().tl());
 	}
+
 	int getX() {
 		return int(det.left);
 	}
+
 	int getY() {
 		return int(det.top);
+	}
+
+	void updateDet(Detections newdet) {
+		prevDet = det;
+		det = newdet;
+		tlPoints.push_back(det.getRect().tl());
 	}
 
 	// returns <object id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <confidence>
@@ -207,6 +219,7 @@ int main() {
 	int frame, nDetections = 0, nGroundtruths = 0;
 	// lower/higher percentage border for Detections
 	// this is applyed to the Median Detection
+	const bool useMedianSizeFilter = true;
 	float lower_p = 0.3, higher_p = 2;
 
 	if (detfile >> frame);
@@ -249,21 +262,24 @@ int main() {
 			
 		} while (frame == pos);
 
-		// filter out to big/small detections
-		std::sort(det.begin(), det.end(), compareDetections);
-		int median = det[(det.size() / 2) + 1].getRect().area();
-		std::vector<Detections> temp_det;
-		for (int d = 0; d < det.size(); d++) {
-			if (det[d].getRect().area() >= median * lower_p
-				&& det[d].getRect().area() <= median * higher_p)
-			{
-				temp_det.push_back(det[d]);
+		// Median Size Filter to filter out too big/small detections
+		if (useMedianSizeFilter) {
+			std::sort(det.begin(), det.end(), compareDetections);
+			int median = det[(det.size() / 2) + 1].getRect().area();
+			std::vector<Detections> temp_det;
+			for (int d = 0; d < det.size(); d++) {
+				if (det[d].getRect().area() >= median * lower_p
+					&& det[d].getRect().area() <= median * higher_p)
+				{
+					temp_det.push_back(det[d]);
+				}
 			}
+			det.clear();
+			det = std::vector<Detections>(temp_det.size());
+			std::copy(temp_det.begin(), temp_det.end(), det.begin());
+			temp_det.clear();
 		}
-		det.clear();
-		det = std::vector<Detections>(temp_det.size());
-		std::copy(temp_det.begin(), temp_det.end(), det.begin());
-		temp_det.clear();
+		
 
 		//Reading Groundtruth values
 		nGroundtruths = 0;
@@ -311,6 +327,14 @@ int main() {
 			else {
 				std::cout << "Object 10 fits." << std::endl;
 			}
+		}
+
+		//optical flow
+		for (int i = 0; i < trackedObjects.size(); i++) {
+			Mat lfGray, inGray;
+			cvtColor(lastFrame, lfGray, COLOR_BGR2GRAY);
+			cvtColor(in_img, inGray, COLOR_BGR2GRAY);
+			//calcOpticalFlowPyrLK(lfGray, inGray, trackedObjects[i].tlPoints[], p1, status, err, Size(sizeNumber, sizeNumber), maxLevel, criteria);
 		}
 
 		//draw tracked Objects
