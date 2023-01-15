@@ -38,6 +38,13 @@ public:
 		return Rect(left, top, width, height);
 	}
 
+	int getX() {
+		return int(left);
+	}
+	int getY() {
+		return int(top);
+	}
+
 	Rect roiRect() {
 		float scale = 0.1;
 		//float l = left * (1 - scale);
@@ -75,20 +82,24 @@ public:
 class TrackedObject {
 public:
 	Detections det;
-	int id, cutsRect, ignore;
+	int id, cutsRect, updated;
 	
 
-	TrackedObject(Detections d, int i, int c, int ig) {
+	TrackedObject(Detections d, int i, int c, int up) {
 		det = d;
 		id = i;
 		cutsRect = c;
-		ignore = ig;
+		updated = up;
 	}
 	int getX() {
 		return int(det.left);
 	}
 	int getY() {
 		return int(det.top);
+	}
+
+	void update(int up) {
+		updated = up;
 	}
 };
 
@@ -136,7 +147,7 @@ Mat calcMatrix(std::vector<TrackedObject> trackedObjects, std::vector<Detections
 	}
 
 	for (TrackedObject t : trackedObjects) {
-		if (t.ignore == 0) {
+		if (t.updated == 0) {
 			tempTracked.push_back(t);
 		}
 	}
@@ -154,6 +165,60 @@ Mat calcMatrix(std::vector<TrackedObject> trackedObjects, std::vector<Detections
 	}
 
 	return values;
+}
+
+//calculate the new position of the Tracked Object if we couldnt find a matching detection from the detection files
+//TODO: den optischen Fluss berechnen und eine ungefähre Position berechnen
+void calcNewPosition(TrackedObject &trackedObject) {
+	trackedObject.det = trackedObject.det;
+	trackedObject.update(1);
+}
+
+//adds a detection as a new Tracked Object to the vector array
+void newTrackedObject(std::vector<TrackedObject> &trackedObjects, Detections &detection) {
+	detection.ignore = 1;
+	TrackedObject a(detection, trackedObjects.size() + 1, 0, 1);
+	trackedObjects.push_back(a);
+}
+
+//recursively try to assign a detection for every still unassigned Tracked Object
+void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<Detections> &detections){
+	Mat values = calcMatrix(trackedObjects, detections);
+	bool changes = 0;
+
+	//assign a detection that cuts with no Tracked Object to a new Tracked Object (new person detected)
+	for (int i = 0; i < values.cols; i++) {
+		int amount = 0;
+		//check the amount of overlays the detection has
+		for (int j = 0; j < values.rows; j++) {
+			if (values.at<uchar>(j, i) < 100) {
+				amount++;
+			}
+		}
+		//if the detection has no overlays, then get the detection out of the array and assign it to a new Tracked Object
+		if (amount == 0) {
+			int zeroAmount = 0;
+			for (int j = 0; j < detections.size(); j++) {
+				if (detections[j].ignore == 0) {
+					zeroAmount++;
+				}
+
+				if (zeroAmount == i + 1) {
+					newTrackedObject(trackedObjects, detections[j]);
+					changes = 1;
+					break;
+				}
+			}
+		}
+	}
+
+	if (changes) {
+		values = calcMatrix(trackedObjects, detections);
+	}
+
+
+
+	std::cout << values << std::endl;
 }
 
 void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections) {
@@ -178,19 +243,19 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 		}
 	}
 
-	//std::cout << values << std::endl;
+	std::cout << values << std::endl;
 
 	for (int i = 0; i < values.rows; i++) {
 		int amount = 0, position = 0;
 
-		//check amount of numbers under 50
+		//check amount of numbers under 30
 		for (int j = 0; j < values.cols; j++) {
-			if (values.at<uchar>(i, j) < 50) {
+			if (values.at<uchar>(i, j) < 30) {
 				amount++;
 			}
 		}
 
-		//check amount of 0 and save the first zeros position
+		//check amount of 0 and save the zeros position
 		if (amount == 1) {
 			amount = 0;
 			for (int j = 0; j < values.cols; j++) {
@@ -201,11 +266,11 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 			}
 		}
 
-		//check amount of rects that have an IoU of under 50
+		//check if the detection previously found has an IoU of under 30 compared to all Tracked Objects
 		if (amount == 1) {
 			amount = 0;
 			for (int j = 0; j < values.rows; j++) {
-				if (values.at<uchar>(j, position) < 50) {
+				if (values.at<uchar>(j, position) < 30) {
 					amount++;
 				}
 			}
@@ -213,39 +278,45 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 
 		if (amount == 1) {
 			//std::cout << "Row: " << i << " | " << ". row zero at: " << position << std::endl;
-			flaggedDetections.at<uchar>(i, position) = 1;
-			flaggedDetections.at<uchar>(i, 0) = 1;
 			trackedObjects[i].det = detections[position];
 			detections[position].ignore = 1;
-			trackedObjects[i].ignore = 1;
+			trackedObjects[i].update(1);
 		}
 
 	}
 
+
+	//Tracked Object cuts with no new detection
 	for (int i = 0; i < values.rows; i++) {
-		if (flaggedDetections.at<uchar>(i, 0) == 1) {
-			continue;
-		}
 		int amount = 0;
 
 		for (int j = 0; j < values.cols; j++) {
+			if (detections[j].ignore == 1) {
+				continue;
+			}
 			if (values.at<uchar>(i, j) < 100) {
 				amount++;
 			}
 		}
 
 		if (amount == 0) {
+			calcNewPosition(trackedObjects[i]);
 		}
 	}
 
-	Mat newValues = calcMatrix(trackedObjects, detections);
-	std::cout << newValues << std::endl;
+	for (TrackedObject t : trackedObjects) {
+		if (t.updated == 0) {
+			std::cout << t.id << std::endl;
+		}
+	}
+
+	recursiveAssigning(trackedObjects, detections);
 
 	/*for (int i = 0; i < flaggedDetections.rows; i++) {
 		for (int j = 0; j < flaggedDetections.cols; j++) {
 			if (flaggedDetections.at<uchar>(i, j) == 1) {
 				trackedObjects[i].det = tempDetections[j];
-				detections[j].ignore = 1;
+				detections[j].update(1);
 			}
 		}
 	}*/
@@ -271,8 +342,8 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 }
 
 int main() {
-	String filepath("data\\data_m4\\2\\");
-	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050, "data\\data_m4\\2\\seqinfo.ini");
+	String filepath("data\\data_m4\\1\\");
+	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050, "data\\data_m4\\1\\seqinfo.ini");
 	const int totalIDs = 150;
 
 	GroundTruth *gt = new GroundTruth[totalIDs];
@@ -300,6 +371,8 @@ int main() {
 			std::cout << "Could not read the image: " << in_img_name.str() << std::endl;
 			return 1;
 		}
+
+		cv::Mat imgCopy = in_img.clone();
 
 		det.clear();
 
@@ -347,7 +420,7 @@ int main() {
 			}
 		}
 		
-		lastFrame = in_img.clone();
+		/*lastFrame = in_img.clone();
 		if (pos > 2) {
 			Detections d_test;
 			d_test.setData(861.f, 118.f, 79.f, 178.f, 0.4f, 0);
@@ -357,10 +430,15 @@ int main() {
 
 			int res = findMatchingTemplate(in_img(d_test.roiRect()), lastFrame(trackedObjects[9].det.getRect()), lastFrame(trackedObjects[14].det.getRect()));
 			std::cout << "winner : : : " << res << std::endl;
-		}
+		}*/
 
-		std::cout << trackedObjects.size() << std::endl;
-		std::cout << det.size() << std::endl;
+
+		for (int i = 0; i < det.size(); i++) {
+			rectangle(imgCopy, det[i].getRect(), Scalar(255, 0, 0), 1);
+			//cv::putText(in_img, "new", { trackedObjects[i].getX(), trackedObjects[i].getY() + 40 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
+			//std::cout << t.det.getRect() << " | id: " << t.id << std::endl;
+
+		}
 
 		if (pos >= 2) {
 			Mat values = calcMatrix(trackedObjects, det);
@@ -373,9 +451,15 @@ int main() {
 
 		//draw tracked Objects
 		for (int i = 0; i < trackedObjects.size(); i++) {
-			trackedObjects[i].ignore = 0;
-			rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 255, 0), 1);
-			cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
+			if (trackedObjects[i].updated == 1) {
+				rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 0, 255), 1);
+				cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,0,255 }, 2);
+			}
+			else {
+				rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 255, 0), 1);
+				cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
+			}
+			trackedObjects[i].update(0);
 			//std::cout << t.det.getRect() << " | id: " << t.id << std::endl;
 			
 		}
@@ -390,7 +474,8 @@ int main() {
 		}*/
 		
 
-		imshow("Image", in_img);
+		imshow("TrackedObjects", in_img);
+		imshow("Detections", imgCopy);
 		// do 10 steps before waiting again 
 		if (pos % 1 == 0) {
 			int wait = cv::waitKey(0);
