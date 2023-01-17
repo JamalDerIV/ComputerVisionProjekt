@@ -753,7 +753,7 @@ int main() {
 		imshow("TrackedObjects", in_img);
 		imshow("Detections", imgCopy);
 		// do 10 steps before waiting again 
-		if (pos % 194521 == 0) {
+		if (pos % 1 == 0) {
 			int wait = cv::waitKey(0);
 			if (wait == 27) {
 				break; // ESC Key
