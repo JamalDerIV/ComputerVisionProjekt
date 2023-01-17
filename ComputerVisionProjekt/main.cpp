@@ -82,24 +82,33 @@ public:
 class TrackedObject {
 public:
 	Detections det;
+	Detections prevDet;
+	std::vector<Point> tlPoints;
 	int id, cutsRect, updated;
 	std::vector<int> iouValues;
 
 	TrackedObject(Detections d, int i, int c, int up) {
 		det = d;
+		prevDet = d;
 		id = i;
 		cutsRect = c;
+		tlPoints.push_back(det.getRect().tl());
 		updated = up;
 	}
+
 	int getX() {
 		return int(det.left);
 	}
+
 	int getY() {
 		return int(det.top);
 	}
 
-	void update(int up) {
-		updated = up;
+	void updateDet(Detections newdet) {
+		prevDet = det;
+		det = newdet;
+		tlPoints.push_back(det.getRect().tl());
+		updated = 1;
 	}
 
 	// returns <object id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <confidence>
@@ -164,8 +173,7 @@ void calcMatrix(std::vector<TrackedObject> &trackedObjects, std::vector<Detectio
 //calculate the new position of the Tracked Object if we couldnt find a matching detection from the detection files
 //TODO: den optischen Fluss berechnen und eine ungefähre Position berechnen
 void calcNewPosition(TrackedObject &trackedObject) {
-	trackedObject.det = trackedObject.det;
-	trackedObject.update(1);
+	trackedObject.updateDet(trackedObject.det);
 }
 
 //adds a detection as a new Tracked Object to the vector array
@@ -207,13 +215,7 @@ void assignNewDetection(std::vector<TrackedObject> &trackedObjects, std::vector<
 void checkAllTemplateMatching(std::vector<TrackedObject> &trackedObjects, std::vector<int> toCheck, Detections &detection) {
 	int fittingPos = 999;
 
-	for (int i = 0; i < toCheck.size(); i++) {
-		std::cout << trackedObjects[toCheck[i]].det.getRect() << std::endl;
-	}
-	std::cout << detection.getRect() << std::endl;
-
 	for (int i = 1; i < toCheck.size(); i++) {
-		std::cout << "aufgerufen" << std::endl;
 		if (!compareTemplates(in_img(detection.getRect()),
 			lastFrame(trackedObjects[toCheck[i-1]].det.getReducedRect(detection.getRect())),
 			lastFrame(trackedObjects[toCheck[i]].det.getReducedRect(detection.getRect())))) {
@@ -228,9 +230,8 @@ void checkAllTemplateMatching(std::vector<TrackedObject> &trackedObjects, std::v
 	}
 
 	if(fittingPos != 999){
-		trackedObjects[fittingPos].det = detection;
+		trackedObjects[fittingPos].updateDet(detection);
 		detection.ignore = 1;
-		trackedObjects[fittingPos].update(1);
 	}
 }
 
@@ -277,7 +278,6 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 			}
 		}
 	}*/
-	std::cout << "aufgerufen 1" << std::endl;
 
 	for (int j = 0; j < detections.size(); j++) {
 		if (detections[j].ignore == 1) {
@@ -296,19 +296,13 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 			}
 		}
 
-		for (int h = 0; h < toCheck.size(); h++) {
-			std::cout << "j: " << j << ": " << toCheck[h] << std::endl;
-		}
-		std::cout << "aufgerufen 1 " << j<< std::endl;
-		std::cout << toCheck.size() << std::endl;
+
 		if (toCheck.size() > 1) {
-			std::cout << j << std::endl;
 			checkAllTemplateMatching(trackedObjects, toCheck, detections[j]);
 			break;
 		}
 	}
 
-	std::cout << "aufgerufen 2" << std::endl;
 
 	int amountDet = 0;
 	int amountObj = 0;
@@ -390,9 +384,8 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		if (amount == 1) {
 			//std::cout << "Row: " << i << " | " << ". row zero at: " << position << std::endl;
-			trackedObjects[i].det = detections[position];
+			trackedObjects[i].updateDet(detections[position]);
 			detections[position].ignore = 1;
-			trackedObjects[i].update(1);
 		}
 
 	}
@@ -416,12 +409,6 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		if (amount == 0) {
 			calcNewPosition(trackedObjects[i]);
-		}
-	}
-
-	for (TrackedObject t : trackedObjects) {
-		if (t.updated == 0) {
-			std::cout << t.id << std::endl;
 		}
 	}
 
@@ -476,6 +463,7 @@ int main() {
 	int frame, nDetections = 0, nGroundtruths = 0;
 	// lower/higher percentage border for Detections
 	// this is applyed to the Median Detection
+	const bool useMedianSizeFilter = true;
 	float lower_p = 0.3, higher_p = 2;
 
 	if (detfile >> frame);
@@ -520,21 +508,24 @@ int main() {
 			
 		} while (frame == pos);
 
-		// filter out to big/small detections
-		std::sort(det.begin(), det.end(), compareDetections);
-		int median = det[(det.size() / 2) + 1].getRect().area();
-		std::vector<Detections> temp_det;
-		for (int d = 0; d < det.size(); d++) {
-			if (det[d].getRect().area() >= median * lower_p
-				&& det[d].getRect().area() <= median * higher_p)
-			{
-				temp_det.push_back(det[d]);
+		// Median Size Filter to filter out too big/small detections
+		if (useMedianSizeFilter) {
+			std::sort(det.begin(), det.end(), compareDetections);
+			int median = det[(det.size() / 2) + 1].getRect().area();
+			std::vector<Detections> temp_det;
+			for (int d = 0; d < det.size(); d++) {
+				if (det[d].getRect().area() >= median * lower_p
+					&& det[d].getRect().area() <= median * higher_p)
+				{
+					temp_det.push_back(det[d]);
+				}
 			}
+			det.clear();
+			det = std::vector<Detections>(temp_det.size());
+			std::copy(temp_det.begin(), temp_det.end(), det.begin());
+			temp_det.clear();
 		}
-		det.clear();
-		det = std::vector<Detections>(temp_det.size());
-		std::copy(temp_det.begin(), temp_det.end(), det.begin());
-		temp_det.clear();
+		
 
 		//Reading Groundtruth values
 		nGroundtruths = 0;
@@ -597,9 +588,13 @@ int main() {
 
 		}*/
 
-
-		//std::cout << trackedObjects[6].det.getRect() << std::endl;
-
+		//optical flow
+		for (int i = 0; i < trackedObjects.size(); i++) {
+			Mat lfGray, inGray;
+			cvtColor(lastFrame, lfGray, COLOR_BGR2GRAY);
+			cvtColor(in_img, inGray, COLOR_BGR2GRAY);
+			//calcOpticalFlowPyrLK(lfGray, inGray, trackedObjects[i].tlPoints[], p1, status, err, Size(sizeNumber, sizeNumber), maxLevel, criteria);
+		}
 
 		//draw tracked Objects
 		for (int i = 0; i < trackedObjects.size(); i++) {
@@ -611,7 +606,7 @@ int main() {
 				rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 255, 0), 1);
 				cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
 			}
-			trackedObjects[i].update(0);
+			trackedObjects[i].updated = 0;
 			trackedObjects[i].iouValues.clear();
 			//std::cout << t.det.getRect() << " | id: " << t.id << std::endl;
 			
