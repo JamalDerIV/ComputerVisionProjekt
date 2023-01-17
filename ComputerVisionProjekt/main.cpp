@@ -68,12 +68,7 @@ public:
 
 	// Reduce this Objects Rect, to fit into targetRect
 	Rect getReducedRect(Rect targetRect) {
-		std::cout << "aufgerufen 1.0" << std::endl;
-		std::cout << width << " x " << height << " from (" << left << ", " << top << ")]" << std::endl;
 		if (width > targetRect.width || height > targetRect.height) {
-			std::cout << "aufgerufen 1.01" << std::endl;
-			std::cout << "left: " << left << std::endl;
-			std::cout << "top: "<< top << std::endl;
 			float l = left + ((width - targetRect.width) / 2);
 			float t = top + ((height - targetRect.height) / 2);
 			
@@ -90,7 +85,6 @@ public:
 			if (t < 0) {
 				t = 0;
 			}
-			std::cout << Rect(l, t, targetRect.width, targetRect.height) << std::endl;
 			return Rect(l, t, targetRect.width, targetRect.height);
 		}
 		else {
@@ -106,7 +100,6 @@ public:
 			if (top < 0) {
 				top = 0;
 			}
-			std::cout << "aufgerufen 1.02" << std::endl;
 			return Rect(left, top, width, height);
 		}
 		
@@ -187,20 +180,14 @@ public:
 
 // Returns 0 if template 1 has a better fit and 1 if template 2 is better
 int compareTemplates(Mat roi, Mat templ1, Mat templ2) {
-	std::cout << "aufgerufen 1.a" << std::endl;
 	Mat result1(roi.cols - templ1.cols + 1, roi.rows - templ1.rows + 1, CV_32FC1);
-	std::cout << "aufgerufen 1.aa" << std::endl;
-	std::cout <<"roi.cols: " << roi.cols << " temp2.cols::"<< templ2.cols << "roi.rows: " << roi.rows << " temp2.rows::" << templ2.rows << std::endl;
 	Mat result2(roi.cols - templ2.cols + 1, roi.rows - templ2.rows + 1, CV_32FC1);
-	std::cout << "aufgerufen 1.b" << std::endl;
 	matchTemplate(roi, templ1, result1, TM_CCOEFF_NORMED);  
 	matchTemplate(roi, templ2, result2, TM_CCOEFF_NORMED);
-	std::cout << "aufgerufen 1.c" << std::endl;
 	double minVal, val1, val2; // for SQDIFF / SQDIFF NORM use minimum, else maximum
 	Point minLoc, maxLoc, matchLoc;
 	minMaxLoc(result1, &minVal, &val1, &minLoc, &maxLoc, Mat());
 	minMaxLoc(result2, &minVal, &val2, &minLoc, &maxLoc, Mat());
-	std::cout << "aufgerufen 1.d" << std::endl;
 	if (val1 > val2) return 0;
 	return 1; //Point(matchLoc.x + templ1.cols, matchLoc.y + templ1.rows);
 }
@@ -312,8 +299,6 @@ void checkAllTemplateMatching(std::vector<TrackedObject> &trackedObjects, std::v
 	
 
 	for (int i = 1; i < toCheck.size(); i++) {
-		std::cout << i << ". aufgerufen 1 " << std::endl;
-		std::cout << i << ". " << toCheck.size() << std::endl;
 		if (!compareTemplates(in_img(detection.getRectForCutting()),
 			lastFrame(trackedObjects[toCheck[lastFit]].det.getReducedRect(detection.getRectForCutting())),
 			lastFrame(trackedObjects[toCheck[i]].det.getReducedRect(detection.getRectForCutting())))) {
@@ -326,7 +311,6 @@ void checkAllTemplateMatching(std::vector<TrackedObject> &trackedObjects, std::v
 			fittingPos = toCheck[i];
 			lastFit = i;
 		}
-		std::cout << i << ". aufgerufen 2 " << std::endl;
 	}
 
 	/*for (TrackedObject t : trackedObjects) {
@@ -377,13 +361,6 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 
 		if (toCheck.size() > 1) {
 			count++;
-			std::cout << "j: "<< j << std::endl;
-			for (int a : toCheck) {
-				std::cout << "to Check: " << a << std::endl;
-			}
-			std::cout << "Rect 0: " << trackedObjects[toCheck[0]].det.getRect() << std::endl;
-			std::cout << "Rect 1: " << trackedObjects[toCheck[1]].det.getRect() << std::endl;
-			std::cout << "Det Rect : " << detections[j].getRect() << std::endl;
 			checkAllTemplateMatching(trackedObjects, toCheck, detections[j]);
 			
 			break;
