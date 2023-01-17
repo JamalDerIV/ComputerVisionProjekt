@@ -50,9 +50,15 @@ public:
 
 	// Reduce this Objects Rect, to fit into targetRect
 	Rect getReducedRect(Rect targetRect) {
-		float l = left + ((width - targetRect.width) / 2);
-		float t = top + ((height - targetRect.height) / 2);
-		return Rect(l, t, targetRect.width, targetRect.height);
+		if (width > targetRect.width) {
+			float l = left + ((width - targetRect.width) / 2);
+			float t = top + ((height - targetRect.height) / 2);
+			return Rect(l, t, targetRect.width, targetRect.height);
+		}
+		else {
+			return Rect(left, top, width, height);
+		}
+		
 	}
 };
 
@@ -177,7 +183,7 @@ void calcMatrix(std::vector<TrackedObject> &trackedObjects, std::vector<Detectio
 //TODO: den optischen Fluss berechnen und eine ungefähre Position berechnen
 void calcNewPosition(TrackedObject &trackedObject) {
 	std::cout << trackedObject.id << "same det" << std::endl;
-	trackedObject.updateDet( trackedObject.det, 1);
+	trackedObject.updateDet( trackedObject.det, 1); 
 }
 
 //adds a detection as a new Tracked Object to the vector array
