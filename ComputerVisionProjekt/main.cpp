@@ -91,7 +91,7 @@ public:
 	Detections det;
 	Detections prevDet;
 	int id, cutsRect, updated;
-	float distance;
+	std::vector<float> movementLeft, movementTop;
 	std::vector<int> iouValues;
 
 	TrackedObject(Detections d, int i, int c, int up) {
@@ -114,10 +114,28 @@ public:
 		prevDet = det;
 		det = newdet;
 		updated = update;
+		float mleft = det.left - prevDet.left;
+		float mtop = det.top - prevDet.top;
+		if (mleft != 0) movementLeft.push_back(mleft);
+		if (mtop != 0) movementTop.push_back(mtop);
 	}
 
-	float getM() {
-		return (det.top - prevDet.top) / (det.left - prevDet.left);
+	void move() {
+		float averageTop = 0;
+		float averageLeft = 0;
+
+		if (movementTop.size() > 0) {
+			for (float val : movementTop) averageTop += val;
+			averageTop /= movementTop.size();
+		}
+		
+		if (movementLeft.size() > 0) {
+			for (float val : movementLeft) averageLeft += val;
+			averageLeft /= movementLeft.size();
+		}
+		
+		det.top += averageTop;
+		det.left += averageLeft;
 	}
 
 	// returns <object id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <confidence>
@@ -182,7 +200,8 @@ void calcMatrix(std::vector<TrackedObject> &trackedObjects, std::vector<Detectio
 //calculate the new position of the Tracked Object if we couldnt find a matching detection from the detection files
 //TODO: den optischen Fluss berechnen und eine ungefähre Position berechnen
 void calcNewPosition(TrackedObject &trackedObject) {
-	trackedObject.updateDet( trackedObject.det, 1); 
+	trackedObject.move();
+	trackedObject.updated = 1;
 }
 
 //adds a detection as a new Tracked Object to the vector array
@@ -574,11 +593,6 @@ int main() {
 		}
 		*/
 
-		for (TrackedObject t : trackedObjects) {
-			float m = t.getM();
-			std::cout << "ID: " << t.id << " Direction: " << m << std::endl;
-		}
-
 		//draw tracked Objects
 		for (int i = 0; i < trackedObjects.size(); i++) {
 			if (trackedObjects[i].updated == 1) {
@@ -605,10 +619,10 @@ int main() {
 		}*/
 		
 
-		imshow("TrackedObjects", in_img);
+		//imshow("TrackedObjects", in_img);
 		//imshow("Detections", imgCopy);
 		// do 10 steps before waiting again 
-		if (pos % 1 == 0) {
+		if (pos % 194521 == 0) {
 			int wait = cv::waitKey(0);
 			if (wait == 27) {
 				break; // ESC Key
