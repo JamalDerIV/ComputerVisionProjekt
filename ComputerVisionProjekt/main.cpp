@@ -47,26 +47,14 @@ public:
 		if (left + width >= imWidth) {
 			width = imWidth - left;
 		}
-		else {
-			width = width;
-		}
 		if (top + height >= imHeight) {
 			height = imHeight - top;
-		}
-		else {
-			height = height;
 		}
 		if (left < 0) {
 			left = 0;
 		}
-		else {
-			left = left;
-		}
 		if (top < 0) {
 			top = 0;
-		}
-		else {
-			top = top;
 		}
 		return Rect(left, top, width, height);
 	}
@@ -109,26 +97,14 @@ public:
 			if (left + width >= imWidth) {
 				width = imWidth - left;
 			}
-			else {
-				width = width;
-			}
 			if (top + height >= imHeight) {
 				height = imHeight - top;
-			}
-			else {
-				height = height;
 			}
 			if (left < 0) {
 				left = 0;
 			}
-			else {
-				left = left;
-			}
 			if (top < 0) {
 				top = 0;
-			}
-			else {
-				top = top;
 			}
 			std::cout << "aufgerufen 1.02" << std::endl;
 			return Rect(left, top, width, height);
