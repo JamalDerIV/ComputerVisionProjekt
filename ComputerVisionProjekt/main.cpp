@@ -182,7 +182,6 @@ void calcMatrix(std::vector<TrackedObject> &trackedObjects, std::vector<Detectio
 //calculate the new position of the Tracked Object if we couldnt find a matching detection from the detection files
 //TODO: den optischen Fluss berechnen und eine ungefähre Position berechnen
 void calcNewPosition(TrackedObject &trackedObject) {
-	std::cout << trackedObject.id << "same det" << std::endl;
 	trackedObject.updateDet( trackedObject.det, 1); 
 }
 
@@ -340,7 +339,6 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections) {
 	tries++;
 	calcMatrix(trackedObjects, detections);
-	
 	for (int i = 0; i < trackedObjects.size(); i++) {
 		int minNumber = 100;
 
@@ -533,7 +531,6 @@ int main() {
 			std::copy(temp_det.begin(), temp_det.end(), det.begin());
 			temp_det.clear();
 		}
-		
 
 		//Reading Groundtruth values
 		nGroundtruths = 0;
