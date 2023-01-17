@@ -14,6 +14,8 @@ using namespace cv;
 */
 
 Mat flaggedDetections;
+Mat in_img;
+Mat lastFrame;
 
 class Detections {
 public:
@@ -84,6 +86,7 @@ public:
 	Detections prevDet;
 	int id, cutsRect, updated;
 	float distance;
+	std::vector<int> iouValues;
 
 	TrackedObject(Detections d, int i, int c, int up) {
 		det = d;
@@ -155,34 +158,19 @@ double iou(Rect boxGT, Rect boxPredicted) {
 	return (double)iArea / (double)(areaA + areaB - iArea);
 };
 
-Mat calcMatrix(std::vector<TrackedObject> trackedObjects, std::vector<Detections> detections){
-	std::vector<Detections> tempDet;
-	std::vector<TrackedObject> tempTracked;
-	for (Detections d : detections) {
-		if (d.ignore == 0) {
-			tempDet.push_back(d);
+void calcMatrix(std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections){
+	for (int i = 0; i < trackedObjects.size(); i++) {
+		trackedObjects[i].iouValues.clear();
+		for (int j = 0; j < detections.size();j++) {
+			if (trackedObjects[i].updated == 1 || detections[j].ignore == 1) {
+				//push 101 as a number that should be ignored
+				trackedObjects[i].iouValues.push_back(101);
+			}
+			else {
+				trackedObjects[i].iouValues.push_back(100 - (iou(trackedObjects[i].det.getRect(), detections[j].getRect()) * 100));
+			}
 		}
 	}
-
-	for (TrackedObject t : trackedObjects) {
-		if (t.updated == 0) {
-			tempTracked.push_back(t);
-		}
-	}
-
-	Mat values = cv::Mat::zeros(cv::Size( tempDet.size(), tempTracked.size()), CV_8UC1);
-	flaggedDetections = cv::Mat::zeros(cv::Size( tempDet.size(), tempTracked.size()), CV_8UC1);
-	int count=0;
-	for (int i = 0; i < tempTracked.size(); i++) {
-		for (int j = 0; j < tempDet.size();j++) {
-			count++;
-			//std::cout << "i: " << i << " " << trackedObjects[i].det.getRect() << " | j: " << j << " " << detections[j].getRect() << std::endl;
-			//std::cout << count << " mal aufgerufen" << " tracked size: " << trackedObjects.size() << "det size: " << detections.size() << " | matrix size: " << values.size() << std::endl;
-			values.at<uchar>(i, j) = 100 - (iou(tempTracked[i].det.getRect(), tempDet[j].getRect()) * 100);
-		}
-	}
-
-	return values;
 }
 
 //calculate the new position of the Tracked Object if we couldnt find a matching detection from the detection files
@@ -199,76 +187,178 @@ void newTrackedObject(std::vector<TrackedObject> &trackedObjects, Detections &de
 	trackedObjects.push_back(a);
 }
 
-//recursively try to assign a detection for every still unassigned Tracked Object
-void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<Detections> &detections){
-	Mat values = calcMatrix(trackedObjects, detections);
-	bool changes = 0;
+void assignNewDetection(std::vector<TrackedObject> &trackedObjects, std::vector<Detections> &detections) {
+	calcMatrix(trackedObjects, detections);
 
 	//assign a detection that cuts with no Tracked Object to a new Tracked Object (new person detected)
-	for (int i = 0; i < values.cols; i++) {
+	for (int i = 0; i < detections.size(); i++) {
+		if (detections[i].ignore == 1) {
+			continue;
+		}
 		int amount = 0;
 		//check the amount of overlays the detection has
-		for (int j = 0; j < values.rows; j++) {
-			if (values.at<uchar>(j, i) < 100) {
+		for (int j = 0; j < trackedObjects.size(); j++) {
+			if (trackedObjects[j].updated == 1) {
+				continue;
+			}
+			if (trackedObjects[j].iouValues[i] < 100) {
 				amount++;
 			}
 		}
+
 		//if the detection has no overlays, then get the detection out of the array and assign it to a new Tracked Object
 		if (amount == 0) {
-			int zeroAmount = 0;
-			for (int j = 0; j < detections.size(); j++) {
-				if (detections[j].ignore == 0) {
-					zeroAmount++;
-				}
-
-				if (zeroAmount == i + 1) {
-					newTrackedObject(trackedObjects, detections[j]);
-					changes = 1;
-					break;
-				}
-			}
+			newTrackedObject(trackedObjects, detections[i]);
 		}
 	}
-
-	if (changes) {
-		values = calcMatrix(trackedObjects, detections);
-	}
-
-
-
-	//std::cout << values << std::endl;
 }
 
-void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections) {
-	tries++;
-	//std::cout << values << std::endl;
+/*call compareTemplates() to check which template of the first two fit better with the detection, if we have to check more than 2 templates,
+* then check the next template with the winner of the last two until we have all checked and assign the detection to the best fitting template (Tracked Object)
+*/
+void checkAllTemplateMatching(std::vector<TrackedObject> &trackedObjects, std::vector<int> toCheck, Detections &detection) {
+	int fittingPos = 999;
 
-	for (int i = 0; i < values.rows; i++) {
-		int minNumber = 100;
+	for (int i = 1; i < toCheck.size(); i++) {
+		if (!compareTemplates(in_img(detection.getRect()),
+			lastFrame(trackedObjects[toCheck[i-1]].det.getReducedRect(detection.getRect())),
+			lastFrame(trackedObjects[toCheck[i]].det.getReducedRect(detection.getRect())))) {
 
-		for (int j = 0; j < values.cols; j++) {
-			//change 100 to the number that you want to subtract as a maximum, so only detections that are close will be subtracted
-			if (values.at<uchar>(i, j) < 40 && values.at<uchar>(i, j) < minNumber && values.at<uchar>(i, j) != 0) {
-				minNumber = values.at<uchar>(i, j);
+			std::cout << "Object " << trackedObjects[toCheck[i - 1]].id << " fits better." << std::endl;
+			fittingPos = toCheck[i-1];
+		}
+		else {
+			std::cout << "Object " << trackedObjects[toCheck[i]].id << " fits better." << std::endl;
+			fittingPos = toCheck[i];
+		}
+	}
+
+	if(fittingPos != 999){
+		trackedObjects[fittingPos].updateDet(detection, 1);
+		detection.ignore = 1;
+	}
+}
+
+//recursively try to assign a detection for every still unassigned Tracked Object
+void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<Detections> &detections){
+	calcMatrix(trackedObjects, detections);
+	std::vector<TrackedObject> tempObjects;
+	std::vector<Detections> tempDetections;
+
+	/*for (int i = 0; i < values.cols; i++) {
+		int savedDetection = 0;
+		for (int j = 0; j < values.rows; j++) {
+			if (values.at<uchar>(j, i) < 100) {
+				int zeroAmount = 0;
+				if (savedDetection == 0) {
+					for (int k = 0; k < detections.size(); k++) {
+						if (detections[k].ignore == 0) {
+							zeroAmount++;
+						}
+
+						if (zeroAmount == i + 1) {
+							tempDetections.push_back(detections[k]);
+							savedDetection = 1;
+							break;
+						}
+					}
+				}
+				
+				tempObjects.push_back(trackedObjects[j]);
+			}
+		}
+	}*/
+
+	/*for (int i = 0; i < trackedObjects.size(); i++) {
+		if (trackedObjects[i].updated == 1) {
+			continue;
+		}
+		for (int j = 0; j < detections.size(); j++) {
+			if (detections[j].ignore == 1) {
+				continue;
+			}
+			if (values.at<uchar>(j, i) < 100) {
+
+			}
+		}
+	}*/
+
+	for (int j = 0; j < detections.size(); j++) {
+		if (detections[j].ignore == 1) {
+			continue;
+		}
+
+		std::vector<int> toCheck;
+
+		for (int i = 0; i < trackedObjects.size(); i++) {
+			if (trackedObjects[i].updated == 1) {
+				continue;
+			}
+
+			if (trackedObjects[i].iouValues[j] < 100) {
+				toCheck.push_back(i);
 			}
 		}
 
-		for (int j = 0; j < values.cols; j++) {
+
+		if (toCheck.size() > 1) {
+			checkAllTemplateMatching(trackedObjects, toCheck, detections[j]);
+			break;
+		}
+	}
+
+
+	int amountDet = 0;
+	int amountObj = 0;
+	for (int j = 0; j < detections.size(); j++) {
+		if (detections[j].ignore == 1) {
+			continue;
+		}
+		amountDet++;
+
+		for (int i = 0; i < trackedObjects.size(); i++) {
+			if (trackedObjects[i].updated == 1) {
+				continue;
+			}
+			amountObj++;
+		}
+	}
+
+	assignNewDetection(trackedObjects, detections);
+
+	if (amountDet > 1 && amountObj > 1) {
+		recursiveAssigning(trackedObjects,detections);
+	}
+}
+
+void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections) {
+	tries++;
+	calcMatrix(trackedObjects, detections);
+	
+	for (int i = 0; i < trackedObjects.size(); i++) {
+		int minNumber = 100;
+
+		for (int j = 0; j < detections.size(); j++) {
 			//change 100 to the number that you want to subtract as a maximum, so only detections that are close will be subtracted
-			if (values.at<uchar>(i, j) < 100 && minNumber != 100) {
-				values.at<uchar>(i, j) -= minNumber;
+			if (trackedObjects[i].iouValues[j] < 40 && trackedObjects[i].iouValues[j] < minNumber && trackedObjects[i].iouValues[j] != 0) {
+				minNumber = trackedObjects[i].iouValues[j];
+			}
+		}
+
+		for (int j = 0; j < detections.size(); j++) {
+			//change 100 to the number that you want to subtract as a maximum, so only detections that are close will be subtracted
+			if (trackedObjects[i].iouValues[j] < 100 && minNumber != 100) {
+				trackedObjects[i].iouValues[j] -= minNumber;
 			}
 		}
 	}
 
-	//std::cout << values << std::endl;
-
-	for (int i = 0; i < values.rows; i++) {
+	for (int i = 0; i < trackedObjects.size(); i++) {
 		int amount = 0, position = 0;
 
 		//check amount of numbers under 30
-		for (int j = 0; j < values.cols; j++) {
-			if (values.at<uchar>(i, j) < 30) {
+		for (int j = 0; j < detections.size(); j++) {
+			if (trackedObjects[i].iouValues[j] < 30) {
 				amount++;
 			}
 		}
@@ -276,8 +366,8 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 		//check amount of 0 and save the zeros position
 		if (amount == 1) {
 			amount = 0;
-			for (int j = 0; j < values.cols; j++) {
-				if (values.at<uchar>(i, j) == 0) {
+			for (int j = 0; j < detections.size(); j++) {
+				if (trackedObjects[i].iouValues[j] == 0) {
 					amount++;
 					position = j;
 				}
@@ -287,8 +377,8 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 		//check if the detection previously found has an IoU of under 30 compared to all Tracked Objects
 		if (amount == 1) {
 			amount = 0;
-			for (int j = 0; j < values.rows; j++) {
-				if (values.at<uchar>(j, position) < 30) {
+			for (int j = 0; j < trackedObjects.size(); j++) {
+				if (trackedObjects[j].iouValues[position] < 30) {
 					amount++;
 				}
 			}
@@ -298,24 +388,22 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 			//std::cout << "Row: " << i << " | " << ". row zero at: " << position << std::endl;
 			trackedObjects[i].updateDet(detections[position], 1);
 			detections[position].ignore = 1;
-			//trackedObjects[i].update(1);
 		}
 
 	}
 
 	//Tracked Object cuts with no new detection
-	for (int i = 0; i < values.rows; i++) {
+	for (int i = 0; i < trackedObjects.size(); i++) {
 		int amount = 0;
-
 		if (trackedObjects[i].updated == 1) {
 			continue;
 		}
 
-		for (int j = 0; j < values.cols; j++) {
+		for (int j = 0; j < detections.size(); j++) {
 			if (detections[j].ignore == 1) {
 				continue;
 			}
-			if (values.at<uchar>(i, j) < 100) {
+			if (trackedObjects[i].iouValues[j] < 100) {
 				amount++;
 			}
 		}
@@ -325,11 +413,8 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 		}
 	}
 
-	for (TrackedObject t : trackedObjects) {
-		if (t.updated == 0) {
-			//std::cout << t.id << std::endl;
-		}
-	}
+
+	assignNewDetection(trackedObjects, detections);
 
 	recursiveAssigning(trackedObjects, detections);
 
@@ -372,7 +457,6 @@ int main() {
 	GroundTruth *gt = new GroundTruth[totalIDs];
 	std::vector<TrackedObject> trackedObjects;
 	std::vector<Detections> det;
-	Mat lastFrame;
 
 	// Reading (custom) gt and det files
 	//  -> the ',' seperator has been replaced with a ' ' whitespace
@@ -396,7 +480,7 @@ int main() {
 		char pos_str[7]; 
 		sprintf_s(pos_str, "%0.6d", pos);
 		in_img_name <<  filepath+"img1\\"<< pos_str <<".jpg";
-		cv::Mat in_img = cv::imread(in_img_name.str(), cv::IMREAD_COLOR);
+		in_img = cv::imread(in_img_name.str(), cv::IMREAD_COLOR);
 		if (in_img.empty())
 		{
 			std::cout << "Could not read the image: " << in_img_name.str() << std::endl;
@@ -484,10 +568,10 @@ int main() {
 			//std::cout << t.det.getRect() << " | id: " << t.id << std::endl;
 
 		}
+		lastFrame = in_img.clone();
 
 		if (pos >= 2) {
-			Mat values = calcMatrix(trackedObjects, det);
-			hungarian(values, 0, trackedObjects, det);
+			hungarian( 0, trackedObjects, det);
 		}
 
 		lastFrame = in_img.clone();
@@ -534,6 +618,7 @@ int main() {
 				cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
 			}
 			trackedObjects[i].updated = 0;
+			trackedObjects[i].iouValues.clear();
 			//std::cout << t.det.getRect() << " | id: " << t.id << std::endl;
 			
 		}
