@@ -4,6 +4,7 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <cmath>
 
 using namespace cv;
 
@@ -81,15 +82,14 @@ class TrackedObject {
 public:
 	Detections det;
 	Detections prevDet;
-	std::vector<Point> tlPoints;
 	int id, cutsRect, updated;
+	float distance;
 
 	TrackedObject(Detections d, int i, int c, int up) {
 		det = d;
 		prevDet = d;
 		id = i;
 		cutsRect = c;
-		tlPoints.push_back(det.getRect().tl());
 		updated = up;
 	}
 
@@ -101,14 +101,14 @@ public:
 		return int(det.top);
 	}
 
-	void updateDet(Detections newdet) {
+	void updateDet(Detections newdet, int update) {
 		prevDet = det;
 		det = newdet;
-		tlPoints.push_back(det.getRect().tl());
+		updated = update;
 	}
 
-	void update(int up) {
-		updated = up;
+	float getM() {
+		return (det.top - prevDet.top) / (det.left - prevDet.left);
 	}
 
 	// returns <object id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <confidence>
@@ -188,8 +188,8 @@ Mat calcMatrix(std::vector<TrackedObject> trackedObjects, std::vector<Detections
 //calculate the new position of the Tracked Object if we couldnt find a matching detection from the detection files
 //TODO: den optischen Fluss berechnen und eine ungefähre Position berechnen
 void calcNewPosition(TrackedObject &trackedObject) {
-	trackedObject.det = trackedObject.det;
-	trackedObject.update(1);
+	std::cout << trackedObject.id << "same det" << std::endl;
+	trackedObject.updateDet( trackedObject.det, 1);
 }
 
 //adds a detection as a new Tracked Object to the vector array
@@ -236,7 +236,7 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 
 
 
-	std::cout << values << std::endl;
+	//std::cout << values << std::endl;
 }
 
 void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections) {
@@ -296,17 +296,20 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 
 		if (amount == 1) {
 			//std::cout << "Row: " << i << " | " << ". row zero at: " << position << std::endl;
-			trackedObjects[i].det = detections[position];
+			trackedObjects[i].updateDet(detections[position], 1);
 			detections[position].ignore = 1;
-			trackedObjects[i].update(1);
+			//trackedObjects[i].update(1);
 		}
 
 	}
 
-
 	//Tracked Object cuts with no new detection
 	for (int i = 0; i < values.rows; i++) {
 		int amount = 0;
+
+		if (trackedObjects[i].updated == 1) {
+			continue;
+		}
 
 		for (int j = 0; j < values.cols; j++) {
 			if (detections[j].ignore == 1) {
@@ -318,13 +321,13 @@ void hungarian(Mat values, int tries, std::vector<TrackedObject> &trackedObjects
 		}
 
 		if (amount == 0) {
-			calcNewPosition(trackedObjects[i]);
+			calcNewPosition(trackedObjects[i]); 
 		}
 	}
 
 	for (TrackedObject t : trackedObjects) {
 		if (t.updated == 0) {
-			std::cout << t.id << std::endl;
+			//std::cout << t.id << std::endl;
 		}
 	}
 
@@ -488,6 +491,7 @@ int main() {
 		}
 
 		lastFrame = in_img.clone();
+		/*
 		if (pos >= 2 && dataset == 2) {
 			Detections d_test;
 			d_test.setData(880.f, 125.f, 55.f, 160.f, 0.4f,0);
@@ -502,13 +506,21 @@ int main() {
 			}
 
 		}
+		*/
 
 		//optical flow
+		/*
 		for (int i = 0; i < trackedObjects.size(); i++) {
 			Mat lfGray, inGray;
 			cvtColor(lastFrame, lfGray, COLOR_BGR2GRAY);
 			cvtColor(in_img, inGray, COLOR_BGR2GRAY);
-			//calcOpticalFlowPyrLK(lfGray, inGray, trackedObjects[i].tlPoints[], p1, status, err, Size(sizeNumber, sizeNumber), maxLevel, criteria);
+			calcOpticalFlowPyrLK(lfGray, inGray, trackedObjects[i].tlPoints[], p1, status, err, Size(sizeNumber, sizeNumber), maxLevel, criteria);
+		}
+		*/
+
+		for (TrackedObject t : trackedObjects) {
+			float m = t.getM();
+			std::cout << "ID: " << t.id << " Direction: " << m << std::endl;
 		}
 
 		//draw tracked Objects
@@ -521,7 +533,7 @@ int main() {
 				rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 255, 0), 1);
 				cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
 			}
-			trackedObjects[i].update(0);
+			trackedObjects[i].updated = 0;
 			//std::cout << t.det.getRect() << " | id: " << t.id << std::endl;
 			
 		}
@@ -546,6 +558,7 @@ int main() {
 			}
 		}
 
+		// write to output file
 		for (int i = 0; i < trackedObjects.size(); i++)
 			// <frame number>, tracked output... , <x>, <y>, <z>
 			outputFile << pos << ' ' << trackedObjects[i].getOutput() << " -1 -1 -1" << std::endl;
