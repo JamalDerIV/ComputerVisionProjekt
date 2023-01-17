@@ -16,6 +16,7 @@ using namespace cv;
 Mat flaggedDetections;
 Mat in_img;
 Mat lastFrame;
+int imWidth=0, imHeight=0;
 
 class Detections {
 public:
@@ -41,6 +42,35 @@ public:
 		return Rect(left, top, width, height);
 	}
 
+	Rect getRectForCutting() {
+		int tempWidth = 0, tempHeight = 0,tempLeft = 0,tempTop = 0;
+		if (left + width >= imWidth) {
+			width = imWidth - left;
+		}
+		else {
+			width = width;
+		}
+		if (top + height >= imHeight) {
+			height = imHeight - top;
+		}
+		else {
+			height = height;
+		}
+		if (left < 0) {
+			left = 0;
+		}
+		else {
+			left = left;
+		}
+		if (top < 0) {
+			top = 0;
+		}
+		else {
+			top = top;
+		}
+		return Rect(left, top, width, height);
+	}
+
 	int getX() {
 		return int(left);
 	}
@@ -50,12 +80,57 @@ public:
 
 	// Reduce this Objects Rect, to fit into targetRect
 	Rect getReducedRect(Rect targetRect) {
-		if (width > targetRect.width) {
+		std::cout << "aufgerufen 1.0" << std::endl;
+		std::cout << width << " x " << height << " from (" << left << ", " << top << ")]" << std::endl;
+		if (width > targetRect.width || height > targetRect.height) {
+			std::cout << "aufgerufen 1.01" << std::endl;
+			std::cout << "left: " << left << std::endl;
+			std::cout << "top: "<< top << std::endl;
 			float l = left + ((width - targetRect.width) / 2);
 			float t = top + ((height - targetRect.height) / 2);
+			
+
+			if (l + targetRect.width > imWidth) {
+				targetRect.width = imWidth - l;
+			}
+			if (t + targetRect.height> imHeight) {
+				targetRect.height= imHeight - t;
+			}
+			if (l < 0) {
+				l = 0;
+			}
+			if (t < 0) {
+				t = 0;
+			}
+			std::cout << Rect(l, t, targetRect.width, targetRect.height) << std::endl;
 			return Rect(l, t, targetRect.width, targetRect.height);
 		}
 		else {
+			if (left + width >= imWidth) {
+				width = imWidth - left;
+			}
+			else {
+				width = width;
+			}
+			if (top + height >= imHeight) {
+				height = imHeight - top;
+			}
+			else {
+				height = height;
+			}
+			if (left < 0) {
+				left = 0;
+			}
+			else {
+				left = left;
+			}
+			if (top < 0) {
+				top = 0;
+			}
+			else {
+				top = top;
+			}
+			std::cout << "aufgerufen 1.02" << std::endl;
 			return Rect(left, top, width, height);
 		}
 		
@@ -136,14 +211,20 @@ public:
 
 // Returns 0 if template 1 has a better fit and 1 if template 2 is better
 int compareTemplates(Mat roi, Mat templ1, Mat templ2) {
+	std::cout << "aufgerufen 1.a" << std::endl;
 	Mat result1(roi.cols - templ1.cols + 1, roi.rows - templ1.rows + 1, CV_32FC1);
+	std::cout << "aufgerufen 1.aa" << std::endl;
+	std::cout <<"roi.cols: " << roi.cols << " temp2.cols::"<< templ2.cols << "roi.rows: " << roi.rows << " temp2.rows::" << templ2.rows << std::endl;
 	Mat result2(roi.cols - templ2.cols + 1, roi.rows - templ2.rows + 1, CV_32FC1);
+	std::cout << "aufgerufen 1.b" << std::endl;
 	matchTemplate(roi, templ1, result1, TM_CCOEFF_NORMED);  
 	matchTemplate(roi, templ2, result2, TM_CCOEFF_NORMED);
+	std::cout << "aufgerufen 1.c" << std::endl;
 	double minVal, val1, val2; // for SQDIFF / SQDIFF NORM use minimum, else maximum
 	Point minLoc, maxLoc, matchLoc;
 	minMaxLoc(result1, &minVal, &val1, &minLoc, &maxLoc, Mat());
 	minMaxLoc(result2, &minVal, &val2, &minLoc, &maxLoc, Mat());
+	std::cout << "aufgerufen 1.d" << std::endl;
 	if (val1 > val2) return 0;
 	return 1; //Point(matchLoc.x + templ1.cols, matchLoc.y + templ1.rows);
 }
@@ -179,10 +260,25 @@ void calcMatrix(std::vector<TrackedObject> &trackedObjects, std::vector<Detectio
 	}
 }
 
+//temp delete later
+Mat calcMatrixo(std::vector<TrackedObject>& trackedObjects, std::vector<Detections> detections) {
+	Mat values = cv::Mat::zeros(cv::Size(detections.size(), trackedObjects.size()), CV_8UC1);
+	for (int i = 0; i < trackedObjects.size(); i++) {
+		trackedObjects[i].iouValues.clear();
+		for (int j = 0; j < detections.size();j++) {
+			
+			values.at<uchar>(i,j) = (100 - (iou(trackedObjects[i].det.getRect(), detections[j].getRect()) * 100));
+			
+		}
+	}
+	return values;
+}
+
+
 //calculate the new position of the Tracked Object if we couldnt find a matching detection from the detection files
 //TODO: den optischen Fluss berechnen und eine ungefähre Position berechnen
 void calcNewPosition(TrackedObject &trackedObject) {
-	std::cout << trackedObject.id << "same det" << std::endl;
+	//std::cout << trackedObject.id << "same det" << std::endl;
 	trackedObject.updateDet( trackedObject.det, 1); 
 }
 
@@ -191,6 +287,17 @@ void newTrackedObject(std::vector<TrackedObject> &trackedObjects, Detections &de
 	detection.ignore = 1;
 	TrackedObject a(detection, trackedObjects.size() + 1, 0, 1);
 	trackedObjects.push_back(a);
+}
+
+void updateTrackedObject(TrackedObject &trackedObject, Detections &detection) {
+	if (abs(trackedObject.det.height - detection.height) > trackedObject.det.height * 0.4) {
+		calcNewPosition(trackedObject);
+	}
+	else {
+		trackedObject.updateDet(detection, 1);
+		detection.ignore = 1;
+	}
+
 }
 
 void assignNewDetection(std::vector<TrackedObject> &trackedObjects, std::vector<Detections> &detections) {
@@ -224,24 +331,38 @@ void assignNewDetection(std::vector<TrackedObject> &trackedObjects, std::vector<
 */
 void checkAllTemplateMatching(std::vector<TrackedObject> &trackedObjects, std::vector<int> toCheck, Detections &detection) {
 	int fittingPos = 999;
+	int lastFit = 0;
+
+	
 
 	for (int i = 1; i < toCheck.size(); i++) {
-		if (!compareTemplates(in_img(detection.getRect()),
-			lastFrame(trackedObjects[toCheck[i-1]].det.getReducedRect(detection.getRect())),
-			lastFrame(trackedObjects[toCheck[i]].det.getReducedRect(detection.getRect())))) {
+		std::cout << i << ". aufgerufen 1 " << std::endl;
+		std::cout << i << ". " << toCheck.size() << std::endl;
+		if (!compareTemplates(in_img(detection.getRectForCutting()),
+			lastFrame(trackedObjects[toCheck[lastFit]].det.getReducedRect(detection.getRectForCutting())),
+			lastFrame(trackedObjects[toCheck[i]].det.getReducedRect(detection.getRectForCutting())))) {
 
-			std::cout << "Object " << trackedObjects[toCheck[i - 1]].id << " fits better." << std::endl;
-			fittingPos = toCheck[i-1];
+			std::cout << "Object " << trackedObjects[toCheck[lastFit]].id << " fits better." << std::endl;
+			fittingPos = toCheck[lastFit];
 		}
 		else {
 			std::cout << "Object " << trackedObjects[toCheck[i]].id << " fits better." << std::endl;
 			fittingPos = toCheck[i];
+			lastFit = i;
 		}
+		std::cout << i << ". aufgerufen 2 " << std::endl;
 	}
 
+	/*for (TrackedObject t : trackedObjects) {
+		for (int i : t.iouValues) {
+			std::cout << i << " ";
+		}
+		std::cout << std::endl;
+	}*/
+
+
 	if(fittingPos != 999){
-		trackedObjects[fittingPos].updateDet(detection, 1);
-		detection.ignore = 1;
+		updateTrackedObject(trackedObjects[fittingPos], detection);
 	}
 }
 
@@ -250,6 +371,13 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 	calcMatrix(trackedObjects, detections);
 	std::vector<TrackedObject> tempObjects;
 	std::vector<Detections> tempDetections;
+
+	/*for (TrackedObject t : trackedObjects) {
+		for (int i : t.iouValues) {
+			std::cout << i << " ";
+		}
+		std::cout << std::endl;
+	}*/
 
 	int count = 0;
 	for (int j = 0; j < detections.size(); j++) {
@@ -273,14 +401,19 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 
 		if (toCheck.size() > 1) {
 			count++;
+			std::cout << "j: "<< j << std::endl;
+			for (int a : toCheck) {
+				std::cout << "to Check: " << a << std::endl;
+			}
+			std::cout << "Rect 0: " << trackedObjects[toCheck[0]].det.getRect() << std::endl;
+			std::cout << "Rect 1: " << trackedObjects[toCheck[1]].det.getRect() << std::endl;
+			std::cout << "Det Rect : " << detections[j].getRect() << std::endl;
 			checkAllTemplateMatching(trackedObjects, toCheck, detections[j]);
 			
 			break;
 		}
 		toCheck.clear();
 	}
-
-	std::cout << "count : " << count << std::endl;
 
 	int amountDet = 0;
 	int amountObj = 0;
@@ -300,10 +433,52 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 
 	assignNewDetection(trackedObjects, detections);
 
+	/*for (TrackedObject t : trackedObjects) {
+		for (int i : t.iouValues) {
+			std::cout << i << " ";
+		}
+		std::cout << std::endl;
+	}*/
+
+	//std::cout << calcMatrixo(trackedObjects,detections) << std::endl;
+
+	/*for (Detections d : detections) {
+		std::cout << d.ignore << std::endl;
+	}*/
+
 	if (count > 0) {
 		recursiveAssigning(trackedObjects, detections);
 	}
 	
+}
+
+void assignLastDetections(std::vector<TrackedObject> &trackedObjects, std::vector<Detections> &detections) {
+	calcMatrix(trackedObjects,detections);
+	for (int i = 0; i < trackedObjects.size();i++) {
+		if (trackedObjects[i].updated == 1) {
+			continue;
+		}
+
+		int lowestValue = 101;
+		int pos = 999;
+		for (int j = 0; j < detections.size(); j++) {
+			if (detections[j].ignore == 1) {
+				continue;
+			}
+
+			if (lowestValue > trackedObjects[i].iouValues[j] && trackedObjects[i].iouValues[j] < 50) {
+				lowestValue = trackedObjects[i].iouValues[j];
+				pos = j;
+			}
+		}
+
+		if (pos != 999) {
+			updateTrackedObject(trackedObjects[i], detections[pos]);
+		}
+		else {
+			calcNewPosition(trackedObjects[i]);
+		}
+	}
 }
 
 void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections) {
@@ -315,7 +490,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		for (int j = 0; j < detections.size(); j++) {
 			//change 100 to the number that you want to subtract as a maximum, so only detections that are close will be subtracted
-			if (trackedObjects[i].iouValues[j] < 50 && trackedObjects[i].iouValues[j] < minNumber && trackedObjects[i].iouValues[j] != 0) {
+			if (trackedObjects[i].iouValues[j] < 80 && trackedObjects[i].iouValues[j] < minNumber && trackedObjects[i].iouValues[j] != 0) {
 				minNumber = trackedObjects[i].iouValues[j];
 			}
 		}
@@ -333,7 +508,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		//check amount of numbers under 30
 		for (int j = 0; j < detections.size(); j++) {
-			if (trackedObjects[i].iouValues[j] < 60) {
+			if (trackedObjects[i].iouValues[j] < 80) {
 				amount++;
 			}
 		}
@@ -353,7 +528,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 		if (amount == 1) {
 			amount = 0;
 			for (int j = 0; j < trackedObjects.size(); j++) {
-				if (trackedObjects[j].iouValues[position] < 60) {
+				if (trackedObjects[j].iouValues[position] < 50) {
 					amount++;
 				}
 			}
@@ -361,8 +536,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		if (amount == 1) {
 			//std::cout << "Row: " << i << " | " << ". row zero at: " << position << std::endl;
-			trackedObjects[i].updateDet(detections[position], 1);
-			detections[position].ignore = 1;
+			updateTrackedObject(trackedObjects[i], detections[position]);
 		}
 
 	}
@@ -392,6 +566,8 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 	assignNewDetection(trackedObjects, detections);
 
 	recursiveAssigning(trackedObjects, detections);
+
+	assignLastDetections(trackedObjects, detections);
 
 	/*for (int i = 0; i < flaggedDetections.rows; i++) {
 		for (int j = 0; j < flaggedDetections.cols; j++) {
@@ -423,10 +599,12 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 }
 
 int main() {
-	const int dataset = 1;
-	String filepath("data\\data_m4\\1\\");
+	const int dataset = 5;
+	String filepath("data\\data_m4\\5\\");
 	std::ostringstream seqinfoPath; seqinfoPath << "data\\data_m4\\" << dataset << "\\seqinfo.ini";
 	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050,  seqinfoPath.str().c_str());
+	imWidth = GetPrivateProfileIntA("Sequence", "imWidth", 1920,  seqinfoPath.str().c_str());
+	imHeight = GetPrivateProfileIntA("Sequence", "imHeight", 1080,  seqinfoPath.str().c_str());
 	const int totalIDs = 150;
 
 	GroundTruth *gt = new GroundTruth[totalIDs];
@@ -440,8 +618,8 @@ int main() {
 	int frame, nDetections = 0, nGroundtruths = 0;
 	// lower/higher percentage border for Detections
 	// this is applyed to the Median Detection
-	const bool useMedianSizeFilter = false;
-	float lower_p = 0.3, higher_p = 2;
+	const bool useMedianSizeFilter = true;
+	float lower_p = 0.7, higher_p = 2;
 
 	if (detfile >> frame);
 	if (gtfile >> frame);
@@ -579,7 +757,7 @@ int main() {
 
 		for (TrackedObject t : trackedObjects) {
 			float m = t.getM();
-			std::cout << "ID: " << t.id << " Direction: " << m << std::endl;
+			//std::cout << "ID: " << t.id << " Direction: " << m << std::endl;
 		}
 
 		//draw tracked Objects
@@ -607,9 +785,9 @@ int main() {
 			//std::cout << gt[i].left << " - " << gt[i].top << " - " << gt[i].width << " - " << gt[i].height << " - " << std::endl;
 		}*/
 		
-
+		std::cout << pos << std::endl;
 		imshow("TrackedObjects", in_img);
-		//imshow("Detections", imgCopy);
+		imshow("Detections", imgCopy);
 		// do 10 steps before waiting again 
 		if (pos % 1 == 0) {
 			int wait = cv::waitKey(0);
