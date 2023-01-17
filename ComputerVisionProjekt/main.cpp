@@ -251,45 +251,9 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 	std::vector<TrackedObject> tempObjects;
 	std::vector<Detections> tempDetections;
 
-	/*for (int i = 0; i < values.cols; i++) {
-		int savedDetection = 0;
-		for (int j = 0; j < values.rows; j++) {
-			if (values.at<uchar>(j, i) < 100) {
-				int zeroAmount = 0;
-				if (savedDetection == 0) {
-					for (int k = 0; k < detections.size(); k++) {
-						if (detections[k].ignore == 0) {
-							zeroAmount++;
-						}
-
-						if (zeroAmount == i + 1) {
-							tempDetections.push_back(detections[k]);
-							savedDetection = 1;
-							break;
-						}
-					}
-				}
-				
-				tempObjects.push_back(trackedObjects[j]);
-			}
-		}
-	}*/
-
-	/*for (int i = 0; i < trackedObjects.size(); i++) {
-		if (trackedObjects[i].updated == 1) {
-			continue;
-		}
-		for (int j = 0; j < detections.size(); j++) {
-			if (detections[j].ignore == 1) {
-				continue;
-			}
-			if (values.at<uchar>(j, i) < 100) {
-
-			}
-		}
-	}*/
-
+	int count = 0;
 	for (int j = 0; j < detections.size(); j++) {
+		
 		if (detections[j].ignore == 1) {
 			continue;
 		}
@@ -308,11 +272,15 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 
 
 		if (toCheck.size() > 1) {
+			count++;
 			checkAllTemplateMatching(trackedObjects, toCheck, detections[j]);
+			
 			break;
 		}
+		toCheck.clear();
 	}
 
+	std::cout << "count : " << count << std::endl;
 
 	int amountDet = 0;
 	int amountObj = 0;
@@ -332,9 +300,10 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 
 	assignNewDetection(trackedObjects, detections);
 
-	if (amountDet > 1 && amountObj > 1) {
-		recursiveAssigning(trackedObjects,detections);
+	if (count > 0) {
+		recursiveAssigning(trackedObjects, detections);
 	}
+	
 }
 
 void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vector<Detections> detections) {
@@ -346,7 +315,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		for (int j = 0; j < detections.size(); j++) {
 			//change 100 to the number that you want to subtract as a maximum, so only detections that are close will be subtracted
-			if (trackedObjects[i].iouValues[j] < 40 && trackedObjects[i].iouValues[j] < minNumber && trackedObjects[i].iouValues[j] != 0) {
+			if (trackedObjects[i].iouValues[j] < 50 && trackedObjects[i].iouValues[j] < minNumber && trackedObjects[i].iouValues[j] != 0) {
 				minNumber = trackedObjects[i].iouValues[j];
 			}
 		}
@@ -364,7 +333,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		//check amount of numbers under 30
 		for (int j = 0; j < detections.size(); j++) {
-			if (trackedObjects[i].iouValues[j] < 30) {
+			if (trackedObjects[i].iouValues[j] < 60) {
 				amount++;
 			}
 		}
@@ -384,7 +353,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 		if (amount == 1) {
 			amount = 0;
 			for (int j = 0; j < trackedObjects.size(); j++) {
-				if (trackedObjects[j].iouValues[position] < 30) {
+				if (trackedObjects[j].iouValues[position] < 60) {
 					amount++;
 				}
 			}
@@ -454,8 +423,8 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 }
 
 int main() {
-	const int dataset = 2;
-	String filepath("data\\data_m4\\2\\");
+	const int dataset = 1;
+	String filepath("data\\data_m4\\1\\");
 	std::ostringstream seqinfoPath; seqinfoPath << "data\\data_m4\\" << dataset << "\\seqinfo.ini";
 	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050,  seqinfoPath.str().c_str());
 	const int totalIDs = 150;
@@ -471,7 +440,7 @@ int main() {
 	int frame, nDetections = 0, nGroundtruths = 0;
 	// lower/higher percentage border for Detections
 	// this is applyed to the Median Detection
-	const bool useMedianSizeFilter = true;
+	const bool useMedianSizeFilter = false;
 	float lower_p = 0.3, higher_p = 2;
 
 	if (detfile >> frame);
@@ -640,7 +609,7 @@ int main() {
 		
 
 		imshow("TrackedObjects", in_img);
-		imshow("Detections", imgCopy);
+		//imshow("Detections", imgCopy);
 		// do 10 steps before waiting again 
 		if (pos % 1 == 0) {
 			int wait = cv::waitKey(0);
