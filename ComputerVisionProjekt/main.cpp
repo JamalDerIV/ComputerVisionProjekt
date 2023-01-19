@@ -18,6 +18,13 @@ Mat in_img;
 Mat lastFrame;
 int imWidth=0, imHeight=0;
 
+//if the sequence has low framerates this attribute needs to be higher (range 0-100), because the detections will be farther apart and the IoU value will be worse
+int acceptableIoUValue = 70;
+
+// lower/higher percentage border for Detections
+// this is applyed to the Median Detection filter
+const bool useMedianSizeFilter = true;
+
 class Detections {
 public:
 	float left, top, width, height, confidence;
@@ -207,12 +214,12 @@ public:
 		float averageTop = 0;
 		float averageLeft = 0;
 
-		if (movementTop.size() > 0) {
+		if (movementTop.size() > 4) {
 			for (float val : movementTop) averageTop += val;
 			averageTop /= movementTop.size();
 		}
 
-		if (movementLeft.size() > 0) {
+		if (movementLeft.size() > 4) {
 			for (float val : movementLeft) averageLeft += val;
 			averageLeft /= movementLeft.size();
 		}
@@ -316,8 +323,8 @@ void newTrackedObject(std::vector<TrackedObject> &trackedObjects, Detections &de
 }
 
 void updateTrackedObject(TrackedObject &trackedObject, Detections &detection) {
-	if (abs(trackedObject.det.height - detection.height) > trackedObject.det.height * 0.2 ||
-		abs(trackedObject.det.width - detection.width) > trackedObject.det.width * 0.2) {
+	if (abs(trackedObject.det.height - detection.height) > trackedObject.det.height * 0.4 ||
+		abs(trackedObject.det.width - detection.width) > trackedObject.det.width * 0.4) {
 		calcNewPosition(trackedObject);
 	}
 	else {
@@ -470,6 +477,7 @@ void recursiveAssigning(std::vector<TrackedObject> &trackedObjects, std::vector<
 	
 }
 
+//assigns all the detections to the Tracked Objects that were not assigned
 void assignLastDetections(std::vector<TrackedObject> &trackedObjects, std::vector<Detections> &detections) {
 	calcMatrix(trackedObjects,detections);
 	for (int i = 0; i < trackedObjects.size();i++) {
@@ -484,12 +492,12 @@ void assignLastDetections(std::vector<TrackedObject> &trackedObjects, std::vecto
 				continue;
 			}
 
-			if (lowestValue > trackedObjects[i].iouValues[j] && trackedObjects[i].iouValues[j] < 40 && abs(lowestValue- trackedObjects[i].iouValues[j]) >= 5) {
+			if (lowestValue > trackedObjects[i].iouValues[j] && trackedObjects[i].iouValues[j] < acceptableIoUValue+10 && abs(lowestValue- trackedObjects[i].iouValues[j]) >= 5) {
 				lowestValue = trackedObjects[i].iouValues[j];
 				pos = j;
 			}
-			else if(lowestValue > trackedObjects[i].iouValues[j] && trackedObjects[i].iouValues[j] < 40 && abs(lowestValue - trackedObjects[i].iouValues[j]) < 4){
-				if (pos == 999) {
+			else if(lowestValue > trackedObjects[i].iouValues[j] && trackedObjects[i].iouValues[j] < acceptableIoUValue+10 && abs(lowestValue - trackedObjects[i].iouValues[j]) < 4){
+				if (pos == 999){
 					continue;
 				}
 
@@ -529,7 +537,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		for (int j = 0; j < detections.size(); j++) {
 			//change 100 to the number that you want to subtract as a maximum, so only detections that are close will be subtracted
-			if (trackedObjects[i].iouValues[j] < 30 && trackedObjects[i].iouValues[j] < minNumber && trackedObjects[i].iouValues[j] != 0) {
+			if (trackedObjects[i].iouValues[j] < acceptableIoUValue+10 && trackedObjects[i].iouValues[j] < minNumber && trackedObjects[i].iouValues[j] != 0) {
 				minNumber = trackedObjects[i].iouValues[j];
 			}
 		}
@@ -547,7 +555,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 
 		//check amount of numbers under 30
 		for (int j = 0; j < detections.size(); j++) {
-			if (trackedObjects[i].iouValues[j] < 30) {
+			if (trackedObjects[i].iouValues[j] < acceptableIoUValue) {
 				amount++;
 			}
 		}
@@ -567,7 +575,7 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 		if (amount == 1) {
 			amount = 0;
 			for (int j = 0; j < trackedObjects.size(); j++) {
-				if (trackedObjects[j].iouValues[position] < 30) {
+				if (trackedObjects[j].iouValues[position] < acceptableIoUValue) {
 					amount++;
 				}
 			}
@@ -610,13 +618,13 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 	Mat values = calcMatrixo(trackedObjects, detections);
 
 	std::cout << values << std::endl;
-	std::cout << trackedObjects[7].det.getRect() << std::endl;
+
 	assignNewDetection(trackedObjects, detections);
-	std::cout << trackedObjects[7].det.getRect() << std::endl;
+
 	recursiveAssigning(trackedObjects, detections);
-	std::cout << trackedObjects[7].det.getRect() << std::endl;
+
 	assignLastDetections(trackedObjects, detections);
-	std::cout << trackedObjects[7].det.getRect() << std::endl;
+
 	/*for (int i = 0; i < flaggedDetections.rows; i++) {
 		for (int j = 0; j < flaggedDetections.cols; j++) {
 			if (flaggedDetections.at<uchar>(i, j) == 1) {
@@ -647,14 +655,14 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 }
 
 int main() {
-	const int dataset = 2;
-	String filepath("data\\data_m4\\2\\");
+	const int dataset = 5;
+	String filepath("data\\data_m4\\5\\");
 	std::ostringstream seqinfoPath; seqinfoPath << "data\\data_m4\\" << dataset << "\\seqinfo.ini";
 	int seqLength = GetPrivateProfileIntA("Sequence", "seqLength", 1050,  seqinfoPath.str().c_str());
 	imWidth = GetPrivateProfileIntA("Sequence", "imWidth", 1920,  seqinfoPath.str().c_str());
 	imHeight = GetPrivateProfileIntA("Sequence", "imHeight", 1080,  seqinfoPath.str().c_str());
 	const int totalIDs = 150;
-	const int detlimit = 10;
+	const int detlimit = 0;
 
 	GroundTruth *gt = new GroundTruth[totalIDs];
 	std::vector<TrackedObject> trackedObjects;
@@ -665,10 +673,8 @@ int main() {
 	std::ifstream detfile(filepath+"det\\det.txt");
 	std::ifstream gtfile(filepath + "gt\\gt_sorted.txt");
 	int frame, nDetections = 0, nGroundtruths = 0;
-	// lower/higher percentage border for Detections
-	// this is applyed to the Median Detection
-	const bool useMedianSizeFilter = true;
-	float lower_p = 0.7, higher_p = 2;
+	
+	float lower_p = 0.5, higher_p = 2;
 
 	if (detfile >> frame);
 	if (gtfile >> frame);
