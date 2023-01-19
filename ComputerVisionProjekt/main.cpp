@@ -18,19 +18,19 @@ const int dataset = 5;
 String filepath("data\\data_m4\\5\\");
 
 //if the sequence has low framerates this attribute needs to be higher (range 0-100), because the detections will be farther apart and the IoU value will be worse
-const int acceptableIoUValue = 70;
+const int acceptableIoUValue = 80;
 
-//the size difference a new detection is allowed to be, when the new detection is being assigned to a tracked object
+//the size difference a new detection is allowed to be, when the new detection is being assigned to a tracked object (range: 0.0 - 1.0)
 const float allowedSizeDifference = 0.6;
 
 //the amount of frames a tracked object is allowed to move without getting assigned a new detection
-const int maxFrames = 7;
+const int maxFrames = 4;
 
 // lower/higher percentage border for Detections
 // this is applyed to the Median Detection filter
 const bool useMedianSizeFilter = true;
 // every detection smaller than (lower_p * median) size or bigger than (higher_p * median) will be ignored
-const float lower_p = 0.5, higher_p = 2;
+const float lower_p = 0, higher_p = 4;
 
 
 
@@ -97,8 +97,8 @@ public:
 	// Reduce this objects rect, to fit into targetRect, if the reduced rect is out of the image, it also gets adjusted
 	Rect getReducedRect(Rect targetRect) {
 		if (width > targetRect.width || height > targetRect.height) {
-			float l = left + ((width - targetRect.width) / 2);
-			float t = top + ((height - targetRect.height) / 2);
+			float l = left + ((width - targetRect.width) / 1);
+			float t = top + ((height - targetRect.height) / 1);
 
 			if (l >= imWidth) {
 				l = imWidth - 1;
@@ -236,12 +236,12 @@ public:
 
 		if (movementTop.size() > 4) {
 			for (float val : movementTop) averageTop += val;
-			averageTop /= movementTop.size();
+			averageTop /= (movementTop.size()*1);
 		}
 
 		if (movementLeft.size() > 4) {
 			for (float val : movementLeft) averageLeft += val;
-			averageLeft /= movementLeft.size();
+			averageLeft /= (movementLeft.size()*1);
 		}
 
 		if (det.top + averageTop <= imHeight) {
@@ -326,10 +326,14 @@ void newTrackedObject(std::vector<TrackedObject> &trackedObjects, Detections &de
 	trackedObjects.push_back(a);
 }
 
+bool checkSize(TrackedObject trackedObject, Detections detection) {
+	return (abs(trackedObject.det.height - detection.height) > trackedObject.det.height * (1 - allowedSizeDifference) ||
+		abs(trackedObject.det.width - detection.width) > trackedObject.det.width * (1 - allowedSizeDifference));
+}
+
 //tries to update the tracked object with a new detection, if the new detection hasnt a size difference of allowedSizeDifference
 void updateTrackedObject(TrackedObject &trackedObject, Detections &detection) {
-	if (abs(trackedObject.det.height - detection.height) > trackedObject.det.height * (1-allowedSizeDifference) ||
-		abs(trackedObject.det.width - detection.width) > trackedObject.det.width * (1-allowedSizeDifference)) {
+	if (checkSize(trackedObject,detection)) {
 		calcNewPosition(trackedObject);
 	}
 	else {
@@ -572,16 +576,15 @@ void hungarian(int tries, std::vector<TrackedObject> &trackedObjects, std::vecto
 			}
 		}
 	}
-
+	
 	assignNewDetection(trackedObjects, detections);
 	recursiveAssigning(trackedObjects, detections);
 	assignLastDetections(trackedObjects, detections);
 }
 
-// write to output file
-void writeOutputFile(std::vector<TrackedObject> trackedObjects, int pos) {
-	std::ofstream outputFile;
-	outputFile.open(filepath + "trackedOutput.txt");
+//write to output file
+void writeOutputFile(std::vector<TrackedObject> trackedObjects, int pos, std::ofstream &outputFile) {
+
 
 	for (int i = 0; i < trackedObjects.size(); i++) {
 		if (trackedObjects[i].ignore == 1) {
@@ -599,7 +602,7 @@ int main() {
 	imWidth = GetPrivateProfileIntA("Sequence", "imWidth", 1920,  seqinfoPath.str().c_str());
 	imHeight = GetPrivateProfileIntA("Sequence", "imHeight", 1080,  seqinfoPath.str().c_str());
 	const int totalIDs = 150;
-	const int detlimit = 0;
+	const int detlimit = 3;
 
 	GroundTruth *gt = new GroundTruth[totalIDs];
 	std::vector<TrackedObject> trackedObjects;
@@ -615,7 +618,8 @@ int main() {
 	if (gtfile >> frame);
 
 	// Writing tracked Object into file 
-	
+	std::ofstream outputFile;
+	outputFile.open(filepath + "trackedOutput.txt");
 	
 	for (int pos = 1; pos <= seqLength; pos += 1) {
 		std::ostringstream in_img_name;
@@ -710,6 +714,7 @@ int main() {
 			hungarian( 0, trackedObjects, det);
 		}
 
+		//save the frame as lastFrame for the compareTemplate method
 		lastFrame = in_img.clone();
 
 		//draw tracked Objects
@@ -734,8 +739,8 @@ int main() {
 		}*/
 		
 		std::cout << " Frame: " << pos << std::endl;
-		imshow("TrackedObjects", in_img);
-		imshow("Detections", imgCopy);
+		//imshow("TrackedObjects", in_img);
+		//imshow("Detections", imgCopy);
 		// do 10 steps before waiting again 
 		if (pos % 1 == 0) {
 			int wait = cv::waitKey(0);
@@ -744,7 +749,7 @@ int main() {
 			}
 		}
 
-		//writeOutputFile(trackedObjects,pos);
+		writeOutputFile(trackedObjects,pos,outputFile);
 		
 		cv::destroyAllWindows();
 	}
