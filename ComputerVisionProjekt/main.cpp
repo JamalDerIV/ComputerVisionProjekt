@@ -245,17 +245,14 @@ int main() {
 		imshow("Own Background Substraction", in_img);
 
 		// do 10 steps before waiting again 
-		<<<<<< < HEAD
-			if (pos % 1 == 0) {
-				====== =
-					if (pos % 100 == 0) {
-						>>>>>> > 732bb421d144213416e85cf0ba05e4d32464b389
-							int wait = cv::waitKey(0);
-						if (wait == 27) {
-							break; // ESC Key
-						}
-					}
+		if (pos % 1 == 0) {
+			if (pos % 100 == 0) {
+				int wait = cv::waitKey(0);
+				if (wait == 27) {
+					break; // ESC Key
+				}
 			}
+		}
 
 		std::cout << "F Scores: " << std::endl;
 		std::cout << "Mog2 : " << fscore_mog2 / iterations << std::endl;
@@ -264,3 +261,4 @@ int main() {
 		cv::destroyAllWindows();
 		return 0;
 	}
+}
