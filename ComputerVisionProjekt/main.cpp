@@ -21,7 +21,7 @@ String filepath("data\\data_m4\\5\\");
 const int acceptableIoUValue = 80;
 
 //the size difference a new detection is allowed to be, when the new detection is being assigned to a tracked object (range: 0.0 - 1.0)
-const float allowedSizeDifference = 0.6;
+const float allowedSizeDifference = 0.5;
 
 //the amount of frames a tracked object is allowed to move without getting assigned a new detection
 const int maxFrames = 4;
@@ -163,9 +163,11 @@ bool compareDetections(Detections d1, Detections d2) {
 
 class GroundTruth {
 public:
+	int ids;
 	float left, top, width, height, confidence, visibility;
 
-	void setData(float l, float t, float w, float h, float c, float v) {
+	void setData(int id, float l, float t, float w, float h, float c, float v) {
+		ids = id;
 		left = l;
 		top = t;
 		width = w;
@@ -177,6 +179,19 @@ public:
 	String print() {
 		std::ostringstream ret;
 		ret << left << " - " << top << " - " << width << " - " << height;
+		return ret.str();
+	}
+
+	String getOutput() {
+		std::ostringstream ret;
+		ret << ids << " "
+			<< left << " "
+			<< top << " "
+			<< width << " "
+			<< height << " "
+			<< confidence << " "
+			<< 1 << " "
+			<< visibility;;
 		return ret.str();
 	}
 };
@@ -221,9 +236,9 @@ public:
 	void updateMovement() {
 		float mleft = (det.left + (det.width * 0.5)) - (prevDet.left + (prevDet.width * 0.5));
 		float mtop = (det.top + (det.height * 0.5)) - (prevDet.top + (prevDet.height * 0.5));
-		if (movementLeft.size() >= 5) movementLeft.erase(movementLeft.begin());
+		if (movementLeft.size() >= 10) movementLeft.erase(movementLeft.begin());
 		movementLeft.push_back(mleft);
-		if (movementTop.size() >= 5) movementTop.erase(movementTop.begin());
+		if (movementTop.size() >= 10) movementTop.erase(movementTop.begin());
 		movementTop.push_back(mtop);
 	}
 
@@ -327,14 +342,20 @@ void newTrackedObject(std::vector<TrackedObject> &trackedObjects, Detections &de
 }
 
 bool checkSize(TrackedObject trackedObject, Detections detection) {
-	return (abs(trackedObject.det.height - detection.height) > trackedObject.det.height * (1 - allowedSizeDifference) ||
-		abs(trackedObject.det.width - detection.width) > trackedObject.det.width * (1 - allowedSizeDifference));
+	return (abs(trackedObject.det.height - detection.height) > trackedObject.det.height * allowedSizeDifference ||
+		abs(trackedObject.det.width - detection.width) > trackedObject.det.width * allowedSizeDifference);
 }
 
 //tries to update the tracked object with a new detection, if the new detection hasnt a size difference of allowedSizeDifference
 void updateTrackedObject(TrackedObject &trackedObject, Detections &detection) {
 	if (checkSize(trackedObject,detection)) {
-		calcNewPosition(trackedObject);
+		if (trackedObject.noNewDetection >= maxFrames) {
+			trackedObject.ignore = 1;
+		}
+		else {
+
+			calcNewPosition(trackedObject);
+		}
 	}
 	else {
 		trackedObject.updateDet(detection, 1);
@@ -620,6 +641,9 @@ int main() {
 	// Writing tracked Object into file 
 	std::ofstream outputFile;
 	outputFile.open(filepath + "trackedOutput.txt");
+
+	std::ofstream OTF;
+	OTF.open(filepath + "gtN.txt");
 	
 	for (int pos = 1; pos <= seqLength; pos += 1) {
 		std::ostringstream in_img_name;
@@ -680,11 +704,15 @@ int main() {
 			float id, left, top, width, height, confidence, tag_class, visibility, z;
 			if (dataset == 5) { 
 				gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility >> z;
-				gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
+				gt[nGroundtruths].setData(id,left, top, width, height, confidence, visibility);
+				OTF << pos << ' ' << gt[nGroundtruths].getOutput() << std::endl;
 			}
 			else {
 				gtfile >> id >> left >> top >> width >> height >> confidence >> tag_class >> visibility;
-				if (tag_class == 1) gt[nGroundtruths].setData(left, top, width, height, confidence, visibility);
+				if (tag_class == 1) {
+					gt[nGroundtruths].setData(id,left, top, width, height, confidence, visibility);
+					OTF << pos << ' ' << gt[nGroundtruths].getOutput() << std::endl;
+				}
 			}
 			
 			nGroundtruths++;
@@ -719,24 +747,13 @@ int main() {
 
 		//draw tracked Objects
 		for (int i = 0; i < trackedObjects.size(); i++) {
-			if (trackedObjects[i].updated == 1 && trackedObjects[i].ignore == 0) {
-				rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 0, 255), 1);
-				cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,0,255 }, 2);
-			}
-			else if(trackedObjects[i].ignore == 0){
-				rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 255, 0), 1);
-				cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,255,0 }, 2);
-			}
+			rectangle(in_img, trackedObjects[i].det.getRect(), Scalar(0, 0, 255), 1);
+			cv::putText(in_img, std::to_string(trackedObjects[i].id), { trackedObjects[i].getX(), trackedObjects[i].getY() + 20 }, cv::FONT_HERSHEY_SIMPLEX, 0.8, { 0,0,255 }, 2);
+			
 			trackedObjects[i].updated = 0;
 			trackedObjects[i].iouValues.clear();
 			
 		}
-
-		//draw groundtruths
-		/*
-		for (int i = 1; i < nGroundtruths; i++) {
-			rectangle(in_img, Rect(gt[i].left, gt[i].top, gt[i].width, gt[i].height), Scalar(255, 0, 0), 1);
-		}*/
 		
 		std::cout << " Frame: " << pos << std::endl;
 		//imshow("TrackedObjects", in_img);
