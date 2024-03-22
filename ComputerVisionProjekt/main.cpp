@@ -16,13 +16,13 @@ std::string globalImagePath()
 class bgSub {
 private:
 	int imagesToLoad;
-	cv::Mat *images;
+	cv::Mat* images;
 	cv::Mat bgdImg;
 
 public:
 	bgSub(int pos) {
 		imagesToLoad = pos;
-		images = new cv::Mat [pos];
+		images = new cv::Mat[pos];
 	}
 
 public:
@@ -31,41 +31,43 @@ public:
 	*/
 	void apply() {
 
-	//load all images as grayscale into an array
-	for (int i = 1; i < imagesToLoad+1; i++) {
-		std::ostringstream img_name;
-		char pos_str[7];
-		sprintf_s(pos_str, "%0.6d", i);
+		//load all images as grayscale into an array
+		for (int i = 1; i < imagesToLoad + 1; i++) {
+			std::ostringstream img_name;
+			char pos_str[7];
+			sprintf_s(pos_str, "%0.6d", i);
 
-		img_name << globalImagePath() << "input\\in" << pos_str << ".jpg";
-		images[imagesToLoad-i] = cv::imread(img_name.str(), cv::IMREAD_GRAYSCALE);
-	}
+			img_name << globalImagePath() << "input\\in" << pos_str << ".jpg";
+			images[imagesToLoad - i] = cv::imread(img_name.str(), cv::IMREAD_GRAYSCALE);
+		}
 
-	//declares backgroundImage as a blank image the size xy of one the images in the array
-	bgdImg = cv::Mat::zeros(cv::Size(images[0].cols, images[0].rows), CV_8UC1);
+		//declares backgroundImage as a blank image the size xy of one the images in the array
+		bgdImg = cv::Mat::zeros(cv::Size(images[0].cols, images[0].rows), CV_8UC1);
 
-	//add the grayscales of all images by position row col and divide by images to load to get the average grayscale
-	for (int row = 0; row < images[0].rows; row++) {
-		for (int col = 0; col < images[0].cols; col++) {
+		//add the grayscales of all images by position row col and divide by images to load to get the average grayscale
+		for (int row = 0; row < images[0].rows; row++) {
+			for (int col = 0; col < images[0].cols; col++) {
 
-			int average = 0;
+				int average = 0;
 
-			for (int j = 0; j < imagesToLoad;j++) {
-				average += images[j].at<uchar>(row,col);
+				for (int j = 0; j < imagesToLoad;j++) {
+					average += images[j].at<uchar>(row, col);
+				}
+
+				average /= imagesToLoad;
+
+				// save the average grayscale from position row col into our backgroundImage
+				bgdImg.at<uchar>(row, col) = average;
 			}
-
-			average /= imagesToLoad;
-
-			// save the average grayscale from position row col into our backgroundImage
-			bgdImg.at<uchar>(row, col) = average; 
 		}
 	}
-}
 
 	/*
 	* subtracts the background from an image
 	*/
 	cv::Mat substraction(cv::Mat imgNew) {
+		imshow("Frame", imgNew);
+		imshow("BgdImg", bgdImg);
 
 		for (int row = 0; row < imgNew.rows; row++) {
 			for (int col = 0; col < imgNew.cols; col++) {
@@ -84,13 +86,12 @@ public:
 
 			}
 		}
-
 		return imgNew;
 	}
 };
 
 
-/* Evaluation 
+/* Evaluation
 *	used to calculate F-Sorce of a BG-Subtraction
  */
 class Evaluation {
@@ -101,9 +102,9 @@ private:
 		tn = 0; // Changes/person not detected and not in GT
 
 public:
-	/* 
-	* Compares a mask and a given groundtruth image and 
-	* add ups all true positves to false negatives pixels 
+	/*
+	* Compares a mask and a given groundtruth image and
+	* add ups all true positves to false negatives pixels
 	*/
 	void evaluate(Mat mask, Mat gt) {
 		tp = 0; fn = 0; fp = 0; tn = 0;
@@ -159,7 +160,7 @@ public:
 	}
 
 	/*
-	* Debug print to console to check local attributes 
+	* Debug print to console to check local attributes
 	*/
 	void printValues() {
 		std::cout << "tp: " << tp
@@ -182,18 +183,11 @@ int main() {
 	cv::Ptr<BackgroundSubtractor> knnBS = createBackgroundSubtractorKNN();
 
 	cv::Mat mog2Mask, knnMask;
-	double fscore_own = 0,
-		fscore_knn = 0,
-		fscore_mog2 = 0;
-
-	const int numberImages = 1200,
-		startingPos = 300;
-	int iterations = 0;
 
 	bgSub image(50);
 	image.apply();
 
-	for (int pos = startingPos; pos <= numberImages; pos += 1) {
+	for (int pos = 300; pos <= 1200; pos += 1) {
 		// Loading Images
 		std::ostringstream in_img_name, gt_img_name;
 		char pos_str[7];
@@ -218,18 +212,13 @@ int main() {
 		// Appling BG Subtraction and evalutation
 		mog2BS->apply(in_img, mog2Mask);
 		mog2Eval.evaluate(mog2Mask, gt_img);
-		if (mog2Eval.getFScore() >= 0)
-			fscore_mog2 += mog2Eval.getFScore();
 
 		knnBS->apply(in_img, knnMask);
 		knnEval.evaluate(knnMask, gt_img);
-		fscore_knn += knnEval.getFScore();
 
 		in_img = image.substraction(in_img);
 		ownEval.evaluate(in_img, gt_img);
-		fscore_own += ownEval.getFScore();
 
-		iterations++; 
 		// putting text on image and show it
 		//MOG 2
 		putText(mog2Mask, "FScore: " + std::to_string(mog2Eval.getFScore()), Point(5, 30), FONT_HERSHEY_DUPLEX, 0.8, { 100, 100, 100 });
@@ -242,20 +231,15 @@ int main() {
 		// OWN
 		putText(in_img, "FScore: " + std::to_string(ownEval.getFScore()), Point(5, 30), FONT_HERSHEY_DUPLEX, 0.8, { 100, 100, 100 });
 		imshow("Own Background Substraction", in_img);
-		
+
 		// do 10 steps before waiting again 
-		if (pos % 100 == 0) {
+		if (pos % 1 == 0) {
 			int wait = cv::waitKey(0);
 			if (wait == 27) {
 				break; // ESC Key
 			}
 		}
 	}
-
-	std::cout << "F Scores: " << std::endl;
-	std::cout << "Mog2 : " << fscore_mog2/ iterations << std::endl;
-	std::cout << "KNN  : " << fscore_knn / iterations << std::endl;
-	std::cout << "Own  : " << fscore_own / iterations << std::endl;
 	cv::destroyAllWindows();
 	return 0;
 }
